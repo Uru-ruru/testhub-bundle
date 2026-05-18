@@ -10,22 +10,29 @@
     ],
     "require": {
         "php": ">=8.4",
-        "symfony/framework-bundle": "^7.0"
+        "symfony/framework-bundle": "^7.0",
+        "symfony/http-client": "^8.0",
+        "symfony/http-client-contracts": "^3.7"
     },
     "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.95",
         "phpunit/phpunit": "^10.0"
     },
     "autoload": {
         "psr-4": {
-            "Uru\\TestHubBundle\\": "src/"
+            "TestHub\\Bundle\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Uru\\TestHubBundle\\Tests\\": "tests/"
+            "TestHub\\Bundle\\Tests\\": "tests/"
         }
     },
     "config": {
         "sort-packages": true
+    },
+    "scripts": {
+        "lint": "vendor/bin/php-cs-fixer fix --dry-run --diff",
+        "fix": "vendor/bin/php-cs-fixer fix"
     }
 }

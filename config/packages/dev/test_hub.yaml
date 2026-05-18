@@ -1,0 +1,8 @@
+services:
+    TestHub\Bundle\Collector\SandBoxDataCollector:
+        tags:
+            - { name: data_collector, template: 'profiler/sandbox_collector.html.twig', id: 'app.sandbox_collector' }
+        public: true
+
+    TestHub\Bundle\Service\SandBoxService:
+        public: true

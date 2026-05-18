@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace TestHub\Bundle;
 
-use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
+use Symfony\Component\HttpKernel\Bundle\Bundle;
 
-class TestHubBundle extends AbstractBundle
+class TestHubBundle extends Bundle
 {
 }
