@@ -1,0 +1,31 @@
+{
+    "name": "uru/testhub-bundle",
+    "description": "TestHub Bundle for Symfony",
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Alexander Petrov"
+        }
+    ],
+    "require": {
+        "php": ">=8.4",
+        "symfony/framework-bundle": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Uru\\TestHubBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Uru\\TestHubBundle\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
