@@ -47,5 +47,10 @@
         "test": "vendor/bin/phpunit",
         "lint": "vendor/bin/php-cs-fixer fix --dry-run --diff",
         "fix": "vendor/bin/php-cs-fixer fix"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-develop": "1.0.x-dev"
+        }
     }
 }
