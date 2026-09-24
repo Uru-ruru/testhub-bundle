@@ -41,7 +41,8 @@
         </div>
         {% if not collector.requestCount %}
             <div class="sf-toolbar-info-piece">
-                <span class="sf-toolbar-label">AJAX and redirected requests have their own profiles. Open the panel for recent ones.</span>
+                <b>AJAX calls</b>
+                <span>see panel</span>
             </div>
         {% endif %}
         {% if collector.configured %}
@@ -61,7 +62,7 @@
 {% endblock %}
 
 {% block menu %}
-    <span class="label{{ collector.requestCount ? '' : ' disabled' }}">
+    <span class="label">
         <span class="icon">{{ _self.icon() }}</span>
         <strong>Test Hub</strong>
         {% if collector.sandboxedCount %}

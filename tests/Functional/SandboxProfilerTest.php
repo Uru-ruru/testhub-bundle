@@ -92,6 +92,10 @@ class SandboxProfilerTest extends WebTestCase
         $this->assertResponseIsSuccessful();
 
         $content = $client->getResponse()->getContent();
+
+        // The page made no HTTP calls, but its Test Hub menu item must still look active, not disabled.
+        $this->assertMatchesRegularExpression('{<li class="test_hub selected">\s*<a [^>]+>\s*<span class="label">}', $content);
+
         $recent = substr($content, (int) strpos($content, 'id="test-hub-recent"'));
         $recent = substr($recent, 0, (int) strpos($recent, '<h2>Configuration</h2>'));
 
