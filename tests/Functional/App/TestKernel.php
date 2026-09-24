@@ -23,6 +23,9 @@ final class TestKernel extends Kernel
     /** @var list<string> URLs that reached the transport, across kernel reboots */
     public static array $sentUrls = [];
 
+    /** @var list<array<string, list<string>>> */
+    public static array $sentHeaders = [];
+
     public function registerBundles(): iterable
     {
         yield new FrameworkBundle();
@@ -46,9 +49,16 @@ final class TestKernel extends Kernel
         return sys_get_temp_dir().'/testhub-bundle/'.$this->environment.'/log';
     }
 
-    public static function mockResponse(string $method, string $url): MockResponse
+    /**
+     * @param array<mixed> $options
+     */
+    public static function mockResponse(string $method, string $url, array $options): MockResponse
     {
         self::$sentUrls[] = $url;
+        self::$sentHeaders[] = array_map(
+            static fn (array $lines) => array_map(static fn (string $line) => substr($line, strpos($line, ':') + 2), $lines),
+            $options['normalized_headers'],
+        );
 
         return new MockResponse('{"status":"ok"}', ['response_headers' => ['content-type' => 'application/json']]);
     }

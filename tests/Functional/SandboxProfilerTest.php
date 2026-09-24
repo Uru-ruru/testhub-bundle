@@ -20,6 +20,7 @@ class SandboxProfilerTest extends WebTestCase
     protected function setUp(): void
     {
         TestKernel::$sentUrls = [];
+        TestKernel::$sentHeaders = [];
     }
 
     public function testRequestsGoToRealApiByDefault(): void
@@ -34,6 +35,7 @@ class SandboxProfilerTest extends WebTestCase
         $collector = $client->getProfile()->getCollector(SandBoxDataCollector::NAME);
         $this->assertFalse($collector->getSandbox());
         $this->assertSame(1, $collector->getRequestCount());
+        $this->assertArrayNotHasKey('api-key', TestKernel::$sentHeaders[0]);
         $this->assertSame(0, $collector->getSandboxedCount());
     }
 
@@ -57,6 +59,7 @@ class SandboxProfilerTest extends WebTestCase
         $this->assertSame('https://psp.example/deposit', $request['url']);
         $this->assertSame(200, $request['status_code']);
         $this->assertSame('fail', $request['event']);
+        $this->assertSame(['secret-key'], TestKernel::$sentHeaders[0]['api-key']);
 
         $token = $client->getProfile()->getToken();
 

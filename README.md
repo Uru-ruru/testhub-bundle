@@ -36,7 +36,7 @@ The bundle also checks the kernel environment: in any environment not listed in 
    - requests tagged with a type go to `{SANDBOX_URL}/api/{agent}/{type}/{event}`
    - any other request goes to `{SANDBOX_URL}/api_wrap`
 
-   The original URL is sent in the `url` header and the event in the `event` header.
+   The original URL is sent in the `url` header, the event in the `event` header and `SANDBOX_API_KEY` in the `api-key` header. The API key is sent only to the sandbox, never to real APIs, and is left out when it is empty.
 4. The panel lists each outgoing request: original URL, sandbox URL, type/event, status, timing, request options, response headers and the sandbox response body.
 
 **Deposit event** and **Withdrawal event** select whether the sandbox answers `success` or `fail`.

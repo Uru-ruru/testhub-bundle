@@ -39,6 +39,21 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->assertSame('http://sandbox.test/api/test-agent/deposit/fail', $this->sent[0]['url']);
         $this->assertContains('url: https://real-api.test/pay', $this->sent[0]['options']['headers']);
         $this->assertContains('event: fail', $this->sent[0]['options']['headers']);
+        $this->assertContains('api-key: key', $this->sent[0]['options']['headers']);
+    }
+
+    public function testApiKeyIsNotSentToRealApi(): void
+    {
+        $this->createDecorator(useSandbox: false)->request('GET', 'https://real-api.test/data');
+
+        $this->assertArrayNotHasKey('api-key', $this->sent[0]['options']['normalized_headers']);
+    }
+
+    public function testEmptyApiKeyIsNotSent(): void
+    {
+        $this->createDecorator(useSandbox: true, apiKey: '')->request('GET', 'https://real-api.test/data');
+
+        $this->assertArrayNotHasKey('api-key', $this->sent[0]['options']['normalized_headers']);
     }
 
     public function testTypeCanBePassedInExtra(): void
@@ -109,7 +124,7 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->requestStack->push(new Request(cookies: $cookies));
     }
 
-    private function createDecorator(bool $useSandbox, string $sandboxUrl = 'http://sandbox.test'): SandBoxHttpClientDecorator
+    private function createDecorator(bool $useSandbox, string $sandboxUrl = 'http://sandbox.test', string $apiKey = 'key'): SandBoxHttpClientDecorator
     {
         $client = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $this->sent[] = ['method' => $method, 'url' => $url, 'options' => $options];
@@ -132,7 +147,7 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         return new SandBoxHttpClientDecorator(
             $client,
             $contextProvider,
-            new SandBoxService('key', $useSandbox, $sandboxUrl),
+            new SandBoxService($apiKey, $useSandbox, $sandboxUrl),
             $this->requestStack,
             $this->log,
         );

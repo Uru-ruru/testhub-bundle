@@ -18,6 +18,7 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
 {
     use DecoratorTrait;
     private const string PROXY_HEADER = 'proxy';
+    private const string API_KEY_HEADER = 'api-key';
     private const string DEPOSIT_TYPE = 'deposit';
     private const string WITHDRAWAL_TYPE = 'withdrawal';
 
@@ -78,6 +79,10 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
     {
         $options['headers']['url'] = $url;
         $options['headers']['event'] = $this->getEvent($type);
+
+        if ('' !== $this->sandboxService->getApiKey()) {
+            $options['headers'][self::API_KEY_HEADER] = $this->sandboxService->getApiKey();
+        }
 
         unset($options[self::PROXY_HEADER], $options['base_uri']);
 
