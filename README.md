@@ -33,7 +33,7 @@ The bundle also checks the kernel environment: in any environment not listed in 
 1. Open any page and click **Test Hub** in the debug toolbar (or use its **Turn on** link).
 2. In the panel, set **Use sandbox** to *On*. The choice is saved in the `testhub_sandbox` cookie for this browser.
 3. Reload your page. Every request made through `http_client`, including scoped clients, now goes to the sandbox:
-   - requests tagged with a type go to `{SANDBOX_URL}/api/{agent}/{type}/{event}`
+   - requests with a type (see [Request type](#request-type)) and an agent go to `{SANDBOX_URL}/api/{agent}/{type}/{event}`
    - any other request goes to `{SANDBOX_URL}/api_wrap`
 
    The original URL is sent in the `sandbox-url` header, the event in the `sandbox-event` header and `SANDBOX_API_KEY` in the `sandbox-api-key` header. The API key is sent only to the sandbox, never to real APIs, and is left out when it is empty.
@@ -41,16 +41,22 @@ The bundle also checks the kernel environment: in any environment not listed in 
 
 **Deposit event** and **Withdrawal event** select whether the sandbox answers `success` or `fail`.
 
-Tag a request with a type:
+### Request type
 
-```php
-use TestHub\Bundle\Service\SandBoxService;
+The type in the sandbox URL is resolved in this order:
 
-$httpClient->request('POST', 'https://psp.example/deposit', [
-    'json' => $payload,
-    'extra' => [SandBoxService::SANDBOX_TYPE => 'deposit'], // or 'withdrawal'
-]);
-```
+1. `extra.sandboxRequestType` on the request, for non-standard types:
+   ```php
+   use TestHub\Bundle\Service\SandBoxService;
+
+   $httpClient->request('GET', 'https://psp.example/balance', [
+       'extra' => [SandBoxService::SANDBOX_TYPE => 'balance'],
+   ]);
+   ```
+2. The request context's `getDirection()`, then `getOperation()`, when the value is `deposit`, `withdraw` or `withdrawal`. Deposits and withdrawals need no tagging.
+3. Otherwise the request goes to `/api_wrap`.
+
+The **Deposit event** and **Withdrawal event** selectors apply to `deposit` and to `withdraw`/`withdrawal`. Every other type gets `success`.
 
 The key goes directly under `extra`, which HttpClient ignores, so this code also runs in `prod`, where the bundle is not loaded. Use the string `'sandboxRequestType'` if the class is not autoloaded in `prod`, for example because you installed the bundle with `--dev`.
 

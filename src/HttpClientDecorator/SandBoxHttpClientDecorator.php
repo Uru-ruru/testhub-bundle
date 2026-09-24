@@ -20,7 +20,13 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
 
     private const string PROXY_HEADER = 'proxy';
     private const string DEPOSIT_TYPE = 'deposit';
+    private const string WITHDRAW_TYPE = 'withdraw';
     private const string WITHDRAWAL_TYPE = 'withdrawal';
+
+    /**
+     * Types read from the request context. Anything else (e.g. "balance") must be passed in extra.sandboxRequestType.
+     */
+    private const array BASE_TYPES = [self::DEPOSIT_TYPE, self::WITHDRAW_TYPE, self::WITHDRAWAL_TYPE];
 
     public function __construct(
         private HttpClientInterface $client,
@@ -50,8 +56,11 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
             return $response;
         }
 
+        $context = $this->getCurrentContext();
+        $type ??= $this->getContextType($context);
+
         $originalUrl = $this->resolveOriginalUrl($url, $options);
-        $sandboxUrl = $this->setSandBoxRequestUrl($type);
+        $sandboxUrl = $this->setSandBoxRequestUrl($type, $this->getContextValue($context, 'getAgent'));
         $options = $this->resetOptions($options, $originalUrl, $type);
 
         $response = $this->client->request($method, $sandboxUrl, $options);
@@ -60,10 +69,8 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         return $response;
     }
 
-    private function setSandBoxRequestUrl(?string $type): string
+    private function setSandBoxRequestUrl(?string $type, ?string $agent): string
     {
-        $agent = $this->getAgent();
-
         if (null === $type || null === $agent) {
             return $this->sandboxService->getUrlWrap();
         }
@@ -75,19 +82,40 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
      * The provider collects one context per outgoing request, so the last one belongs to the request being sent.
      * Any service with a get(): array method works, so applications can keep their own provider interface.
      */
-    private function getAgent(): ?string
+    private function getCurrentContext(): ?object
     {
         $provider = $this->contextCollector instanceof \Closure ? ($this->contextCollector)() : $this->contextCollector;
         $contexts = $provider->get();
         $context = $contexts ? end($contexts) : null;
 
-        if (!\is_object($context) || !method_exists($context, 'getAgent')) {
+        return \is_object($context) ? $context : null;
+    }
+
+    /**
+     * Deposit and withdraw are known from the context: its direction, or its operation when direction is empty.
+     */
+    private function getContextType(?object $context): ?string
+    {
+        foreach (['getDirection', 'getOperation'] as $getter) {
+            $type = $this->getContextValue($context, $getter);
+
+            if (\in_array($type, self::BASE_TYPES, true)) {
+                return $type;
+            }
+        }
+
+        return null;
+    }
+
+    private function getContextValue(?object $context, string $getter): ?string
+    {
+        if (null === $context || !method_exists($context, $getter)) {
             return null;
         }
 
-        $agent = $context->getAgent();
+        $value = $context->{$getter}();
 
-        return \is_string($agent) && '' !== $agent ? $agent : null;
+        return \is_string($value) && '' !== $value ? $value : null;
     }
 
     /**
@@ -128,6 +156,7 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         $cookie = match ($type) {
             self::DEPOSIT_TYPE,
             SandBoxDataCollector::DEPOSIT_EVENT => SandBoxDataCollector::DEPOSIT_EVENT,
+            self::WITHDRAW_TYPE,
             self::WITHDRAWAL_TYPE,
             SandBoxDataCollector::WITHDRAWAL_EVENT => SandBoxDataCollector::WITHDRAWAL_EVENT,
             default => null,

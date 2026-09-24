@@ -83,6 +83,41 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->assertSame('http://sandbox.test/api/second-agent/deposit/success', $this->sent[1]['url']);
     }
 
+    public function testDepositTypeIsTakenFromContextDirection(): void
+    {
+        $this->pushRequest(['deposit_event' => 'fail']);
+
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit'));
+
+        $this->assertSame('http://sandbox.test/api/nexumpay/deposit/fail', $this->sent[0]['url']);
+        $this->assertSame('deposit', $this->log->all()[0]['request']['type']);
+    }
+
+    public function testWithdrawTypeFallsBackToContextOperation(): void
+    {
+        $this->pushRequest(['withdrawal_event' => 'fail']);
+
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: '', operation: 'withdraw'));
+
+        $this->assertSame('http://sandbox.test/api/nexumpay/withdraw/fail', $this->sent[0]['url']);
+    }
+
+    public function testExplicitTypeOverridesContext(): void
+    {
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit'), [
+            'extra' => [SandBoxService::SANDBOX_TYPE => 'balance'],
+        ]);
+
+        $this->assertSame('http://sandbox.test/api/nexumpay/balance/success', $this->sent[0]['url']);
+    }
+
+    public function testUnknownContextDirectionIsIgnored(): void
+    {
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'unknown', operation: 'status'));
+
+        $this->assertSame('http://sandbox.test/api_wrap', $this->sent[0]['url']);
+    }
+
     public function testMissingAgentFallsBackToWrapEndpoint(): void
     {
         $collector = new AppContextCollector();
@@ -157,6 +192,17 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->assertTrue($entry['sandboxed']);
         $this->assertSame('https://real-api.test/data', $entry['url']);
         $this->assertSame('http://sandbox.test/api_wrap', $entry['target_url']);
+    }
+
+    /**
+     * @param array<mixed> $options
+     */
+    private function sendWithContext(AppContext $context, array $options = []): void
+    {
+        $collector = new AppContextCollector();
+        $collector->collect($context);
+
+        $this->createDecorator(useSandbox: true, contextProvider: $collector)->request('POST', 'https://psp.test/pay', $options);
     }
 
     /**
