@@ -6,6 +6,7 @@ namespace TestHub\Bundle\DependencyInjection;
 
 use Symfony\Component\DependencyInjection\Argument\ServiceClosureArgument;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
@@ -15,6 +16,8 @@ use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 use TestHub\Bundle\HttpClient\State\DefaultContextProvider;
 use TestHub\Bundle\HttpClientDecorator\SandBoxHttpClientDecorator;
 use TestHub\Bundle\Service\SandBoxService;
+use TestHub\Bundle\Twig\SandBoxProfilerExtension;
+use Twig\Extension\AbstractExtension;
 
 class TestHubExtension extends Extension
 {
@@ -48,6 +51,14 @@ class TestHubExtension extends Extension
                 'id' => SandBoxDataCollector::NAME,
                 'priority' => 250,
             ]);
+
+        if (class_exists(AbstractExtension::class)) {
+            $container->register(SandBoxProfilerExtension::class)
+                ->setArguments([
+                    new ServiceClosureArgument(new Reference('profiler', ContainerInterface::NULL_ON_INVALID_REFERENCE)),
+                ])
+                ->addTag('twig.extension');
+        }
 
         // Tags the application's implementations so ContextProviderPass can detect them.
         $container->registerForAutoconfiguration(ContextProviderInterface::class)

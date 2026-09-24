@@ -73,6 +73,11 @@ final class TestKernel extends Kernel
         return new JsonResponse(['upstream' => $response->toArray()]);
     }
 
+    public function page(): JsonResponse
+    {
+        return new JsonResponse(['page' => true]);
+    }
+
     protected function configureContainer(ContainerConfigurator $container): void
     {
         $container->extension('framework', [
@@ -105,5 +110,6 @@ final class TestKernel extends Kernel
         $routes->import('@WebProfilerBundle/Resources/config/routing/wdt.php')->prefix('/_wdt');
         $routes->import('@WebProfilerBundle/Resources/config/routing/profiler.php')->prefix('/_profiler');
         $routes->add('call_api', '/call-api')->controller('kernel::callApi');
+        $routes->add('page', '/page')->controller('kernel::page');
     }
 }

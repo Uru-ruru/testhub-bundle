@@ -39,6 +39,11 @@
             <b>HTTP requests</b>
             <span>{{ collector.sandboxedCount }} sandboxed / {{ collector.requestCount }} total</span>
         </div>
+        {% if not collector.requestCount %}
+            <div class="sf-toolbar-info-piece">
+                <span class="sf-toolbar-label">AJAX and redirected requests have their own profiles. Open the panel for recent ones.</span>
+            </div>
+        {% endif %}
         {% if collector.configured %}
             <div class="sf-toolbar-info-piece">
                 <b>Use sandbox</b>
@@ -169,7 +174,7 @@
     <h2>HTTP requests</h2>
     {% if collector.requests is empty %}
         <div class="empty">
-            <p>No HTTP requests were made through <code>http_client</code> during this request.</p>
+            <p>No HTTP requests were made through <code>http_client</code> during this request. If the page sends them from an AJAX call or after a redirect, they are in that request's profile: see <a href="#test-hub-recent">Recent sandbox traffic</a> below.</p>
         </div>
     {% else %}
         {% for request in collector.requests %}
@@ -236,6 +241,38 @@
                 </tbody>
             </table>
         {% endfor %}
+    {% endif %}
+
+    {% set recent = test_hub_recent_profiles(token) %}
+    <h2 id="test-hub-recent">Recent sandbox traffic</h2>
+    <p class="help">Other recent requests that made HTTP calls, including AJAX calls and requests before a redirect.</p>
+    {% if recent is empty %}
+        <div class="empty">
+            <p>No other recent request made HTTP calls.</p>
+        </div>
+    {% else %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Request</th>
+                    <th class="nowrap">HTTP calls</th>
+                    <th class="nowrap">Sandboxed</th>
+                    <th>Profile</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for profile in recent %}
+                    <tr class="{{ profile.errors ? 'status-error' : '' }}">
+                        <td class="nowrap">{{ profile.time|date('H:i:s') }}</td>
+                        <td>{{ profile.method }} {{ profile.url }}</td>
+                        <td>{{ profile.requests }}</td>
+                        <td>{{ profile.sandboxed }}{% if profile.errors %} <span class="label status-error">{{ profile.errors }} error{{ profile.errors > 1 ? 's' }}</span>{% endif %}</td>
+                        <td><a href="{{ path('_profiler', {token: profile.token, panel: 'test_hub'}) }}">{{ profile.token }}</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     {% endif %}
 
     <h2>Configuration</h2>

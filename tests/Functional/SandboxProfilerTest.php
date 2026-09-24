@@ -74,4 +74,28 @@ class SandboxProfilerTest extends WebTestCase
         $this->assertResponseIsSuccessful();
         $this->assertStringContainsString('Sandbox on', $client->getResponse()->getContent());
     }
+
+    public function testPanelLinksToAjaxRequestsWithHttpCalls(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+
+        $client->enableProfiler();
+        $client->request('GET', '/page');
+        $pageToken = $client->getProfile()->getToken();
+
+        $client->enableProfiler();
+        $client->xmlHttpRequest('POST', '/call-api');
+        $ajaxToken = $client->getProfile()->getToken();
+
+        $client->request('GET', '/_profiler/'.$pageToken.'?panel='.SandBoxDataCollector::NAME);
+        $this->assertResponseIsSuccessful();
+
+        $content = $client->getResponse()->getContent();
+        $recent = substr($content, (int) strpos($content, 'id="test-hub-recent"'));
+        $recent = substr($recent, 0, (int) strpos($recent, '<h2>Configuration</h2>'));
+
+        $this->assertStringContainsString('/_profiler/'.$ajaxToken.'?panel='.SandBoxDataCollector::NAME, $recent);
+        $this->assertStringNotContainsString($pageToken, $recent);
+    }
 }
