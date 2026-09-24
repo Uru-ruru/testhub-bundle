@@ -8,6 +8,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
+use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 use TestHub\Bundle\HttpClientDecorator\SandBoxHttpClientDecorator;
 use TestHub\Bundle\Service\SandBoxService;
@@ -19,31 +20,38 @@ class TestHubExtension extends Extension
         $configuration = new Configuration();
         $config = $this->processConfiguration($configuration, $configs);
 
-        // Register SandBoxService
+        $environment = $container->hasParameter('kernel.environment') ? $container->getParameter('kernel.environment') : null;
+        if (null !== $environment && !\in_array($environment, $config['environments'], true)) {
+            return;
+        }
+
         $container->register(SandBoxService::class)
-            ->setArgument('$apiKey', '%env(default::SANDBOX_API_KEY)%')
+            ->setArgument('$apiKey', $config['api_key'])
             ->setArgument('$useSandbox', $config['use_sandbox'])
             ->setArgument('$sandboxUrl', $config['sandbox_url'])
             ->setPublic(true);
 
-        // Register DataCollector
-        $container->register(SandBoxDataCollector::class)
-            ->setArgument('$sandboxService', new Reference(SandBoxService::class))
-            ->addTag('data_collector', [
-                'template' => 'profiler/sandbox_collector.html.twig',
-                'id' => 'app.sandbox_collector',
-            ])
-            ->setPublic(true);
+        $container->register(SandBoxRequestLog::class)
+            ->addTag('kernel.reset', ['method' => 'reset']);
 
-        // Context Provider Alias/Definition
+        $container->register(SandBoxDataCollector::class)
+            ->setArguments([
+                new Reference(SandBoxService::class),
+                new Reference(SandBoxRequestLog::class),
+            ])
+            ->addTag('data_collector', [
+                'template' => SandBoxDataCollector::getTemplate(),
+                'id' => SandBoxDataCollector::NAME,
+                'priority' => 250,
+            ]);
+
         $contextProviderId = $config['context_provider'];
-        if (class_exists($contextProviderId) && ! $container->has($contextProviderId)) {
+        if (class_exists($contextProviderId) && !$container->has($contextProviderId)) {
             $container->register($contextProviderId);
         }
-        
+
         $container->setAlias(ContextProviderInterface::class, $contextProviderId);
 
-        // Register Decorator
         $container->register(SandBoxHttpClientDecorator::class)
             ->setDecoratedService('http_client.transport', null, 100)
             ->setArguments([
@@ -51,6 +59,7 @@ class TestHubExtension extends Extension
                 new Reference(ContextProviderInterface::class),
                 new Reference(SandBoxService::class),
                 new Reference('request_stack'),
+                new Reference(SandBoxRequestLog::class),
             ]);
     }
 }

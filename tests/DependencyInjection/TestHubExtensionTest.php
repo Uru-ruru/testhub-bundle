@@ -6,8 +6,7 @@ namespace TestHub\Bundle\Tests\DependencyInjection;
 
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\HttpFoundation\RequestStack;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
+use TestHub\Bundle\Collector\SandBoxDataCollector;
 use TestHub\Bundle\DependencyInjection\TestHubExtension;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 use TestHub\Bundle\HttpClient\State\DefaultContextProvider;
@@ -17,49 +16,62 @@ use TestHub\Bundle\Service\SandBoxService;
 class TestHubExtensionTest extends TestCase
 {
     private TestHubExtension $extension;
-    private ContainerBuilder $container;
 
     protected function setUp(): void
     {
         $this->extension = new TestHubExtension();
-        $this->container = new ContainerBuilder();
-        
-        // Mock required external services for the container
-        $this->container->register('request_stack', RequestStack::class);
-        $this->container->register('http_client.transport', HttpClientInterface::class);
     }
 
     public function testLoadDefaultConfiguration(): void
     {
-        $this->extension->load([], $this->container);
+        $container = $this->createContainer('dev');
+        $this->extension->load([], $container);
 
-        $this->assertTrue($this->container->has(SandBoxService::class));
-        $this->assertTrue($this->container->has(SandBoxHttpClientDecorator::class));
-        
-        // Check alias for ContextProviderInterface
-        $this->assertTrue($this->container->hasAlias(ContextProviderInterface::class));
-        $this->assertEquals(DefaultContextProvider::class, (string) $this->container->getAlias(ContextProviderInterface::class));
-        
-        // Check if DefaultContextProvider is registered because it's the default
-        $this->assertTrue($this->container->has(DefaultContextProvider::class));
+        $this->assertTrue($container->has(SandBoxService::class));
+        $this->assertTrue($container->has(SandBoxHttpClientDecorator::class));
+        $this->assertTrue($container->getDefinition(SandBoxDataCollector::class)->hasTag('data_collector'));
 
-        // Check SandBoxService arguments
-        $definition = $this->container->getDefinition(SandBoxService::class);
-        $this->assertEquals('%env(USE_SANDBOX)%', $definition->getArgument('$useSandbox'));
-        $this->assertEquals('%env(SANDBOX_URL)%', $definition->getArgument('$sandboxUrl'));
+        $this->assertTrue($container->hasAlias(ContextProviderInterface::class));
+        $this->assertEquals(DefaultContextProvider::class, (string) $container->getAlias(ContextProviderInterface::class));
+        $this->assertTrue($container->has(DefaultContextProvider::class));
+
+        $definition = $container->getDefinition(SandBoxService::class);
+        $this->assertEquals('%env(bool:default::USE_SANDBOX)%', $definition->getArgument('$useSandbox'));
+        $this->assertEquals('%env(string:default::SANDBOX_URL)%', $definition->getArgument('$sandboxUrl'));
+    }
+
+    public function testNothingIsRegisteredOutsideDev(): void
+    {
+        $container = $this->createContainer('prod');
+        $this->extension->load([], $container);
+
+        $this->assertFalse($container->has(SandBoxService::class));
+        $this->assertFalse($container->has(SandBoxHttpClientDecorator::class));
+        $this->assertFalse($container->has(SandBoxDataCollector::class));
+    }
+
+    public function testEnvironmentsAreConfigurable(): void
+    {
+        $container = $this->createContainer('test');
+        $this->extension->load([['environments' => ['dev', 'test']]], $container);
+
+        $this->assertTrue($container->has(SandBoxHttpClientDecorator::class));
     }
 
     public function testLoadWithCustomContextProvider(): void
     {
-        $configs = [
-            'test_hub' => [
-                'context_provider' => 'App\CustomContextProvider',
-            ],
-        ];
+        $container = $this->createContainer('dev');
+        $this->extension->load([['context_provider' => 'App\CustomContextProvider']], $container);
 
-        $this->extension->load($configs, $this->container);
+        $this->assertTrue($container->hasAlias(ContextProviderInterface::class));
+        $this->assertEquals('App\CustomContextProvider', (string) $container->getAlias(ContextProviderInterface::class));
+    }
 
-        $this->assertTrue($this->container->hasAlias(ContextProviderInterface::class));
-        $this->assertEquals('App\CustomContextProvider', (string) $this->container->getAlias(ContextProviderInterface::class));
+    private function createContainer(string $environment): ContainerBuilder
+    {
+        $container = new ContainerBuilder();
+        $container->setParameter('kernel.environment', $environment);
+
+        return $container;
     }
 }

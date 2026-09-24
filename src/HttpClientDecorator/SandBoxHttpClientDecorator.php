@@ -1,16 +1,17 @@
 <?php
 
 declare(strict_types=1);
- 
+
 namespace TestHub\Bundle\HttpClientDecorator;
- 
-use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
+
 use Symfony\Component\HttpClient\DecoratorTrait;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
+use TestHub\Bundle\HttpClient\SandBoxRequestLog;
+use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 use TestHub\Bundle\Service\SandBoxService;
 
 final class SandBoxHttpClientDecorator implements HttpClientInterface
@@ -25,7 +26,9 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         private readonly ContextProviderInterface $contextCollector,
         private readonly SandBoxService $sandboxService,
         private readonly RequestStack $requestStack,
-    ) {}
+        private readonly ?SandBoxRequestLog $log = null,
+    ) {
+    }
 
     /**
      * @param array<mixed> $options
@@ -34,30 +37,65 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
      */
     public function request(string $method, string $url, array $options = []): ResponseInterface
     {
-        return $this->client->request($method, $this->setSandBoxRequestUrl($options), $this->resetOptions($options, $url));
+        // "extra.curl" is the legacy location: it is not a real cURL option and must never reach the transport.
+        $type = $options['extra'][SandBoxService::SANDBOX_TYPE] ?? $options['extra']['curl'][SandBoxService::SANDBOX_TYPE] ?? null;
+        unset($options['extra'][SandBoxService::SANDBOX_TYPE], $options['extra']['curl'][SandBoxService::SANDBOX_TYPE]);
+
+        if (!$this->sandboxService->isEnabledFor($this->requestStack->getMainRequest())) {
+            $response = $this->client->request($method, $url, $options);
+            $this->log($method, $url, $url, $type, null, false, $options, $response);
+
+            return $response;
+        }
+
+        $originalUrl = $this->resolveOriginalUrl($url, $options);
+        $sandboxUrl = $this->setSandBoxRequestUrl($type);
+        $options = $this->resetOptions($options, $originalUrl, $type);
+
+        $response = $this->client->request($method, $sandboxUrl, $options);
+        $this->log($method, $originalUrl, $sandboxUrl, $type, $options['headers']['event'], true, $options, $response);
+
+        return $response;
     }
 
-    private function setSandBoxRequestUrl(array $options): string
+    private function setSandBoxRequestUrl(?string $type): string
     {
-        $context = $this->contextCollector->get();
+        $agent = $this->contextCollector->get()[0] ?? null;
 
-        $type = $options['extra']['curl'][SandBoxService::SANDBOX_TYPE] ?? null;
-
-        if ($type === null) {
+        if (null === $type || !\is_object($agent) || !method_exists($agent, 'getAgent')) {
             return $this->sandboxService->getUrlWrap();
         }
 
-        return $this->sandboxService->getUrl() . '/' . $context[0]->getAgent() . '/' . $type . '/' . $this->getEvent($type);
+        return $this->sandboxService->getUrl().'/'.$agent->getAgent().'/'.$type.'/'.$this->getEvent($type);
     }
 
-    private function resetOptions(array $options, $url): array
+    /**
+     * @param array<mixed> $options
+     *
+     * @return array<mixed>
+     */
+    private function resetOptions(array $options, string $url, ?string $type): array
     {
         $options['headers']['url'] = $url;
-        $options['headers']['event'] = $this->getEvent($options['extra']['curl'][SandBoxService::SANDBOX_TYPE] ?? null);
+        $options['headers']['event'] = $this->getEvent($type);
 
-        unset($options[self::PROXY_HEADER], $options['extra']['curl'][SandBoxService::SANDBOX_TYPE]);
+        unset($options[self::PROXY_HEADER], $options['base_uri']);
 
         return $options;
+    }
+
+    /**
+     * @param array<mixed> $options
+     */
+    private function resolveOriginalUrl(string $url, array $options): string
+    {
+        $baseUri = $options['base_uri'] ?? null;
+
+        if (!\is_string($baseUri) || '' === $baseUri || preg_match('{^[a-z][a-z\d+.-]*:}i', $url)) {
+            return $url;
+        }
+
+        return rtrim($baseUri, '/').'/'.ltrim($url, '/');
     }
 
     private function getEvent(?string $type): string
@@ -70,14 +108,30 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
             default => null,
         };
 
-        if ($cookie === null) {
+        if (null === $cookie) {
             return SandBoxDataCollector::EVENT_SUCCESS;
         }
 
-        $event = $this->requestStack->getCurrentRequest()?->cookies->get($cookie);
+        $event = $this->requestStack->getMainRequest()?->cookies->get($cookie);
 
         return \in_array($event, [SandBoxDataCollector::EVENT_SUCCESS, SandBoxDataCollector::EVENT_FAIL], true)
             ? $event
             : SandBoxDataCollector::EVENT_SUCCESS;
+    }
+
+    /**
+     * @param array<mixed> $options
+     */
+    private function log(string $method, string $url, string $targetUrl, ?string $type, ?string $event, bool $sandboxed, array $options, ResponseInterface $response): void
+    {
+        $this->log?->add([
+            'method' => $method,
+            'url' => $url,
+            'target_url' => $targetUrl,
+            'type' => $type,
+            'event' => $event,
+            'sandboxed' => $sandboxed,
+            'options' => array_intersect_key($options, array_flip(['headers', 'query', 'json', 'body', 'auth_bearer'])),
+        ], $response);
     }
 }
