@@ -8,6 +8,10 @@ class SandBoxService
 {
     public const string SANDBOX_TYPE = 'sandboxRequestType';
 
+    public const string API_KEY_HEADER = 'sandbox-api-key';
+    public const string URL_HEADER = 'sandbox-url';
+    public const string EVENT_HEADER = 'sandbox-event';
+
     /**
      * Cookie set by the profiler "Use sandbox" switch: "1" forces the sandbox on, "0" forces it off.
      */
