@@ -8,6 +8,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\BrowserKit\Cookie;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
 use TestHub\Bundle\Service\SandBoxService;
+use TestHub\Bundle\Tests\Functional\App\AgentContextProvider;
 use TestHub\Bundle\Tests\Functional\App\TestKernel;
 
 class SandboxProfilerTest extends WebTestCase
@@ -35,7 +36,7 @@ class SandboxProfilerTest extends WebTestCase
         $collector = $client->getProfile()->getCollector(SandBoxDataCollector::NAME);
         $this->assertFalse($collector->getSandbox());
         $this->assertSame(1, $collector->getRequestCount());
-        $this->assertArrayNotHasKey('api-key', TestKernel::$sentHeaders[0]);
+        $this->assertArrayNotHasKey(SandBoxService::API_KEY_HEADER, TestKernel::$sentHeaders[0]);
         $this->assertSame(0, $collector->getSandboxedCount());
     }
 
@@ -54,12 +55,13 @@ class SandboxProfilerTest extends WebTestCase
         $this->assertTrue($collector->getSandbox());
         $this->assertTrue($collector->getOverride());
         $this->assertSame(1, $collector->getSandboxedCount());
+        $this->assertSame(AgentContextProvider::class, $collector->getContextProvider());
 
         $request = $collector->getRequests()[0];
         $this->assertSame('https://psp.example/deposit', $request['url']);
         $this->assertSame(200, $request['status_code']);
         $this->assertSame('fail', $request['event']);
-        $this->assertSame(['secret-key'], TestKernel::$sentHeaders[0]['api-key']);
+        $this->assertSame(['secret-key'], TestKernel::$sentHeaders[0][SandBoxService::API_KEY_HEADER]);
 
         $token = $client->getProfile()->getToken();
 

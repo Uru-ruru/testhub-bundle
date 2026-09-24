@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace TestHub\Bundle\DependencyInjection;
 
+use Symfony\Component\DependencyInjection\Argument\ServiceClosureArgument;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
+use TestHub\Bundle\DependencyInjection\Compiler\ContextProviderPass;
 use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
+use TestHub\Bundle\HttpClient\State\DefaultContextProvider;
 use TestHub\Bundle\HttpClientDecorator\SandBoxHttpClientDecorator;
 use TestHub\Bundle\Service\SandBoxService;
 
@@ -38,6 +41,7 @@ class TestHubExtension extends Extension
             ->setArguments([
                 new Reference(SandBoxService::class),
                 new Reference(SandBoxRequestLog::class),
+                DefaultContextProvider::class,
             ])
             ->addTag('data_collector', [
                 'template' => SandBoxDataCollector::getTemplate(),
@@ -45,7 +49,13 @@ class TestHubExtension extends Extension
                 'priority' => 250,
             ]);
 
-        $contextProviderId = $config['context_provider'];
+        // Tags the application's implementations so ContextProviderPass can detect them.
+        $container->registerForAutoconfiguration(ContextProviderInterface::class)
+            ->addTag(ContextProviderPass::TAG);
+
+        $container->setParameter(ContextProviderPass::CONFIGURED_PARAMETER, $config['context_provider']);
+        $contextProviderId = $config['context_provider'] ?? DefaultContextProvider::class;
+
         if (class_exists($contextProviderId) && !$container->has($contextProviderId)) {
             $container->register($contextProviderId);
         }
@@ -56,7 +66,8 @@ class TestHubExtension extends Extension
             ->setDecoratedService('http_client.transport', null, 100)
             ->setArguments([
                 new Reference('.inner'),
-                new Reference(ContextProviderInterface::class),
+                // Lazy: the application's provider may itself depend on http_client.
+                new ServiceClosureArgument(new Reference(ContextProviderInterface::class)),
                 new Reference(SandBoxService::class),
                 new Reference('request_stack'),
                 new Reference(SandBoxRequestLog::class),

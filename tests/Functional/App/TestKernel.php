@@ -88,13 +88,14 @@ final class TestKernel extends Kernel
             'sandbox_url' => 'http://sandbox.test',
             'use_sandbox' => false,
             'api_key' => 'secret-key',
-            'context_provider' => AgentContextProvider::class,
         ]);
 
         $container->services()
             ->set('test.mock_response_factory', \Closure::class)
                 ->factory([\Closure::class, 'fromCallable'])
                 ->args([[self::class, 'mockResponse']])
+            // The application's own implementation: the bundle must pick it up without configuration.
+            ->set(AgentContextProvider::class)->autoconfigure()
             ->set('logger', \Psr\Log\NullLogger::class)
             ->set('kernel', self::class)->synthetic()->public()->autowire()->tag('controller.service_arguments');
     }

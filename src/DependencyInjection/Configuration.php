@@ -6,7 +6,6 @@ namespace TestHub\Bundle\DependencyInjection;
 
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
-use TestHub\Bundle\HttpClient\State\DefaultContextProvider;
 
 class Configuration implements ConfigurationInterface
 {
@@ -22,8 +21,8 @@ class Configuration implements ConfigurationInterface
                     ->defaultValue(['dev'])
                 ->end()
                 ->scalarNode('context_provider')
-                    ->defaultValue(DefaultContextProvider::class)
-                    ->info('The service ID or class name of the ContextProviderInterface implementation.')
+                    ->defaultNull()
+                    ->info('The service ID or class name of the ContextProviderInterface implementation. When empty, the application\'s own implementation is detected, with DefaultContextProvider as fallback.')
                 ->end()
                 ->scalarNode('sandbox_url')
                     ->defaultValue('%env(string:default::SANDBOX_URL)%')

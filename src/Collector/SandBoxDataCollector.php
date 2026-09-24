@@ -30,6 +30,7 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
     public function __construct(
         private readonly SandBoxService $sandboxService,
         private readonly ?SandBoxRequestLog $requestLog = null,
+        private readonly string $contextProvider = '',
     ) {
     }
 
@@ -43,6 +44,7 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
         $this->data['apikey'] = $this->sandboxService->getApiKey();
         $this->data['url'] = $this->sandboxService->getUrl();
         $this->data['url_wrap'] = $this->sandboxService->getUrlWrap();
+        $this->data['context_provider'] = $this->contextProvider;
         $this->data['time'] = microtime(true);
         $this->data['requests'] = [];
         $this->data[self::DEPOSIT_EVENT] = null;
@@ -129,6 +131,11 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
     public function getUrlWrap(): string
     {
         return $this->data['url_wrap'] ?? '';
+    }
+
+    public function getContextProvider(): string
+    {
+        return $this->data['context_provider'] ?? '';
     }
 
     public function getDepositEvent(): ?string

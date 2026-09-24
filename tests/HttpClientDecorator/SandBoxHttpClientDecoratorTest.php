@@ -13,6 +13,8 @@ use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 use TestHub\Bundle\HttpClientDecorator\SandBoxHttpClientDecorator;
 use TestHub\Bundle\Service\SandBoxService;
+use TestHub\Bundle\Tests\Fixtures\AppContext;
+use TestHub\Bundle\Tests\Fixtures\AppContextCollector;
 
 class SandBoxHttpClientDecoratorTest extends TestCase
 {
@@ -37,23 +39,23 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         ]);
 
         $this->assertSame('http://sandbox.test/api/test-agent/deposit/fail', $this->sent[0]['url']);
-        $this->assertContains('url: https://real-api.test/pay', $this->sent[0]['options']['headers']);
-        $this->assertContains('event: fail', $this->sent[0]['options']['headers']);
-        $this->assertContains('api-key: key', $this->sent[0]['options']['headers']);
+        $this->assertContains(SandBoxService::URL_HEADER.': https://real-api.test/pay', $this->sent[0]['options']['headers']);
+        $this->assertContains(SandBoxService::EVENT_HEADER.': fail', $this->sent[0]['options']['headers']);
+        $this->assertContains(SandBoxService::API_KEY_HEADER.': key', $this->sent[0]['options']['headers']);
     }
 
     public function testApiKeyIsNotSentToRealApi(): void
     {
         $this->createDecorator(useSandbox: false)->request('GET', 'https://real-api.test/data');
 
-        $this->assertArrayNotHasKey('api-key', $this->sent[0]['options']['normalized_headers']);
+        $this->assertArrayNotHasKey(SandBoxService::API_KEY_HEADER, $this->sent[0]['options']['normalized_headers']);
     }
 
     public function testEmptyApiKeyIsNotSent(): void
     {
         $this->createDecorator(useSandbox: true, apiKey: '')->request('GET', 'https://real-api.test/data');
 
-        $this->assertArrayNotHasKey('api-key', $this->sent[0]['options']['normalized_headers']);
+        $this->assertArrayNotHasKey(SandBoxService::API_KEY_HEADER, $this->sent[0]['options']['normalized_headers']);
     }
 
     public function testTypeCanBePassedInExtra(): void
@@ -66,12 +68,53 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->assertArrayNotHasKey(SandBoxService::SANDBOX_TYPE, $this->sent[0]['options']['extra']);
     }
 
+    public function testAgentOfTheCurrentRequestIsUsed(): void
+    {
+        $collector = new AppContextCollector();
+        $decorator = $this->createDecorator(useSandbox: true, contextProvider: $collector);
+
+        // Outer decorators collect the context right before this decorator runs.
+        $collector->collect(new AppContext('https://first.test', 'first-agent'));
+        $decorator->request('POST', 'https://first.test/pay', ['extra' => [SandBoxService::SANDBOX_TYPE => 'deposit']]);
+        $collector->collect(new AppContext('https://second.test', 'second-agent'));
+        $decorator->request('POST', 'https://second.test/pay', ['extra' => [SandBoxService::SANDBOX_TYPE => 'deposit']]);
+
+        $this->assertSame('http://sandbox.test/api/first-agent/deposit/success', $this->sent[0]['url']);
+        $this->assertSame('http://sandbox.test/api/second-agent/deposit/success', $this->sent[1]['url']);
+    }
+
+    public function testMissingAgentFallsBackToWrapEndpoint(): void
+    {
+        $collector = new AppContextCollector();
+        $collector->collect(new AppContext('https://real-api.test', null));
+
+        $this->createDecorator(useSandbox: true, contextProvider: $collector)->request('POST', 'https://real-api.test/pay', [
+            'extra' => [SandBoxService::SANDBOX_TYPE => 'deposit'],
+        ]);
+
+        $this->assertSame('http://sandbox.test/api_wrap', $this->sent[0]['url']);
+    }
+
+    public function testProviderIsResolvedLazily(): void
+    {
+        $built = false;
+        $decorator = $this->createDecorator(useSandbox: false, contextProvider: static function () use (&$built): AppContextCollector {
+            $built = true;
+
+            return new AppContextCollector();
+        });
+
+        $decorator->request('GET', 'https://real-api.test/data');
+
+        $this->assertFalse($built);
+    }
+
     public function testUntypedRequestIsSentToWrapEndpoint(): void
     {
         $this->createDecorator(useSandbox: true)->request('GET', '/data', ['base_uri' => 'https://real-api.test/v1/']);
 
         $this->assertSame('http://sandbox.test/api_wrap', $this->sent[0]['url']);
-        $this->assertContains('url: https://real-api.test/v1/data', $this->sent[0]['options']['headers']);
+        $this->assertContains(SandBoxService::URL_HEADER.': https://real-api.test/v1/data', $this->sent[0]['options']['headers']);
     }
 
     public function testRequestPassesThroughWhenSandboxIsOff(): void
@@ -124,7 +167,7 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->requestStack->push(new Request(cookies: $cookies));
     }
 
-    private function createDecorator(bool $useSandbox, string $sandboxUrl = 'http://sandbox.test', string $apiKey = 'key'): SandBoxHttpClientDecorator
+    private function createDecorator(bool $useSandbox, string $sandboxUrl = 'http://sandbox.test', string $apiKey = 'key', ?object $contextProvider = null): SandBoxHttpClientDecorator
     {
         $client = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $this->sent[] = ['method' => $method, 'url' => $url, 'options' => $options];
@@ -132,7 +175,7 @@ class SandBoxHttpClientDecoratorTest extends TestCase
             return new MockResponse('{}');
         });
 
-        $contextProvider = new class implements ContextProviderInterface {
+        $contextProvider ??= new class implements ContextProviderInterface {
             public function get(): array
             {
                 return [new class {

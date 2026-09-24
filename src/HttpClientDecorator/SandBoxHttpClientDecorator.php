@@ -24,7 +24,8 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
 
     public function __construct(
         private HttpClientInterface $client,
-        private readonly ContextProviderInterface $contextCollector,
+        /** @var ContextProviderInterface|\Closure(): object any service with a get(): array method */
+        private readonly object $contextCollector,
         private readonly SandBoxService $sandboxService,
         private readonly RequestStack $requestStack,
         private readonly ?SandBoxRequestLog $log = null,
@@ -54,20 +55,39 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         $options = $this->resetOptions($options, $originalUrl, $type);
 
         $response = $this->client->request($method, $sandboxUrl, $options);
-        $this->log($method, $originalUrl, $sandboxUrl, $type, $options['headers']['event'], true, $options, $response);
+        $this->log($method, $originalUrl, $sandboxUrl, $type, $options['headers'][SandBoxService::EVENT_HEADER], true, $options, $response);
 
         return $response;
     }
 
     private function setSandBoxRequestUrl(?string $type): string
     {
-        $agent = $this->contextCollector->get()[0] ?? null;
+        $agent = $this->getAgent();
 
-        if (null === $type || !\is_object($agent) || !method_exists($agent, 'getAgent')) {
+        if (null === $type || null === $agent) {
             return $this->sandboxService->getUrlWrap();
         }
 
-        return $this->sandboxService->getUrl().'/'.$agent->getAgent().'/'.$type.'/'.$this->getEvent($type);
+        return $this->sandboxService->getUrl().'/'.$agent.'/'.$type.'/'.$this->getEvent($type);
+    }
+
+    /**
+     * The provider collects one context per outgoing request, so the last one belongs to the request being sent.
+     * Any service with a get(): array method works, so applications can keep their own provider interface.
+     */
+    private function getAgent(): ?string
+    {
+        $provider = $this->contextCollector instanceof \Closure ? ($this->contextCollector)() : $this->contextCollector;
+        $contexts = $provider->get();
+        $context = $contexts ? end($contexts) : null;
+
+        if (!\is_object($context) || !method_exists($context, 'getAgent')) {
+            return null;
+        }
+
+        $agent = $context->getAgent();
+
+        return \is_string($agent) && '' !== $agent ? $agent : null;
     }
 
     /**
