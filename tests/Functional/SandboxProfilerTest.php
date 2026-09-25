@@ -102,4 +102,60 @@ class SandboxProfilerTest extends WebTestCase
         $this->assertStringContainsString('/_profiler/'.$ajaxToken.'?panel='.SandBoxDataCollector::NAME, $recent);
         $this->assertStringNotContainsString($pageToken, $recent);
     }
+
+    public function testPanelRendersActionForm(): void
+    {
+        $client = static::createClient();
+        $client->enableProfiler();
+        $client->request('GET', '/page');
+        $token = $client->getProfile()->getToken();
+
+        $client->request('GET', '/_profiler/'.$token.'?panel='.SandBoxDataCollector::NAME);
+        $this->assertResponseIsSuccessful();
+
+        $content = $client->getResponse()->getContent();
+        $this->assertStringContainsString('action="/_test_hub/action/call-api"', $content);
+        $this->assertStringContainsString('name="amount"', $content);
+        $this->assertStringContainsString('Sends a withdrawal to the PSP.', $content);
+    }
+
+    public function testActionRunsWithSandboxCookies(): void
+    {
+        $client = static::createClient();
+        $client->getCookieJar()->set(new Cookie(SandBoxService::COOKIE_NAME, '1'));
+        $client->getCookieJar()->set(new Cookie(SandBoxDataCollector::WITHDRAWAL_EVENT, 'fail'));
+        $client->enableProfiler();
+        $client->request('POST', '/_test_hub/action/call-api', ['amount' => '15']);
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSame(
+            ['ok' => true, 'message' => 'Sent 15.', 'output' => 'legacy output'],
+            json_decode($client->getResponse()->getContent(), true),
+        );
+        $this->assertSame(['http://sandbox.test/api/test-agent/withdraw/fail'], TestKernel::$sentUrls);
+        $this->assertResponseHasHeader('X-Debug-Token-Link');
+        $this->assertSame(1, $client->getProfile()->getCollector(SandBoxDataCollector::NAME)->getSandboxedCount());
+    }
+
+    public function testActionFailureIsReported(): void
+    {
+        $client = static::createClient();
+        $client->request('POST', '/_test_hub/action/call-api', ['amount' => '']);
+
+        $this->assertResponseStatusCodeSame(500);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertFalse($data['ok']);
+        $this->assertSame('InvalidArgumentException: Amount is required.', $data['message']);
+        $this->assertSame([], TestKernel::$sentUrls);
+    }
+
+    public function testUnknownActionAndGetAreRejected(): void
+    {
+        $client = static::createClient();
+        $client->request('POST', '/_test_hub/action/nope');
+        $this->assertResponseStatusCodeSame(404);
+
+        $client->request('GET', '/_test_hub/action/call-api');
+        $this->assertResponseStatusCodeSame(405);
+    }
 }

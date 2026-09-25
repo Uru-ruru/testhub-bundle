@@ -6,7 +6,11 @@ use Symfony\Bundle\FrameworkBundle\DataCollector\AbstractDataCollector;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\DataCollector\LateDataCollectorInterface;
+use Symfony\Component\Routing\Exception\ExceptionInterface as RoutingException;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
+use TestHub\Bundle\Action\ActionRegistry;
+use TestHub\Bundle\Controller\ActionController;
 use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\Service\SandBoxService;
 
@@ -31,6 +35,8 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
         private readonly SandBoxService $sandboxService,
         private readonly ?SandBoxRequestLog $requestLog = null,
         private readonly string $contextProvider = '',
+        private readonly ?ActionRegistry $actions = null,
+        private readonly ?UrlGeneratorInterface $urlGenerator = null,
     ) {
     }
 
@@ -56,6 +62,18 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
             if (\in_array($value, self::EVENT_VARIANTS, true)) {
                 $this->data[$event] = $value;
             }
+        }
+
+        $this->data['actions'] = [];
+
+        foreach ($this->actions?->all() ?? [] as $name => $action) {
+            $this->data['actions'][] = [
+                'name' => $name,
+                'label' => $action->getLabel(),
+                'description' => $action->getDescription(),
+                'parameters' => $action->getParameters(),
+                'url' => $this->generateActionUrl($name),
+            ];
         }
     }
 
@@ -171,6 +189,14 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
         return \count(array_filter($this->getRequests(), static fn (array $r) => $r['error'] || $r['status_code'] >= 400));
     }
 
+    /**
+     * @return list<array{name: string, label: string, description: string, parameters: array<string, string>, url: ?string}>
+     */
+    public function getActions(): array
+    {
+        return $this->data['actions'] ?? [];
+    }
+
     public static function getTemplate(): ?string
     {
         return '@TestHub/profiler/sandbox_collector.html.twig';
@@ -179,6 +205,18 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
     public function getName(): string
     {
         return self::NAME;
+    }
+
+    /**
+     * Null when the application has not imported the bundle routes.
+     */
+    private function generateActionUrl(string $name): ?string
+    {
+        try {
+            return $this->urlGenerator?->generate(ActionController::ROUTE, ['name' => $name]);
+        } catch (RoutingException) {
+            return null;
+        }
     }
 
     private function readBody(ResponseInterface $response): ?string

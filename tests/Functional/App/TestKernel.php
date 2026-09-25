@@ -101,6 +101,7 @@ final class TestKernel extends Kernel
                 ->args([[self::class, 'mockResponse']])
             // The application's own implementation: the bundle must pick it up without configuration.
             ->set(AgentContextProvider::class)->autoconfigure()
+            ->set(CallApiAction::class)->autowire()->autoconfigure()
             ->set('logger', \Psr\Log\NullLogger::class)
             ->set('kernel', self::class)->synthetic()->public()->autowire()->tag('controller.service_arguments');
     }
@@ -109,6 +110,7 @@ final class TestKernel extends Kernel
     {
         $routes->import('@WebProfilerBundle/Resources/config/routing/wdt.php')->prefix('/_wdt');
         $routes->import('@WebProfilerBundle/Resources/config/routing/profiler.php')->prefix('/_profiler');
+        $routes->import('@TestHubBundle/config/routes.php')->prefix('/_test_hub');
         $routes->add('call_api', '/call-api')->controller('kernel::callApi');
         $routes->add('page', '/page')->controller('kernel::page');
     }

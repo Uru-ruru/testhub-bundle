@@ -107,6 +107,48 @@ The context must be collected before the sandbox decorator runs. The decorator s
 
 The Test Hub panel shows which provider is in use under **Configuration**. The provider is only built when a request is actually sent to the sandbox, so it can depend on services that use `http_client` themselves.
 
+## Actions
+
+Actions are buttons in the Test Hub panel that run application code, for example processing a test payout that is waiting for the payout cron. Each run is a new request from your browser, so the **Use sandbox** and event controls apply, and the panel links to the run's profile with its HTTP calls.
+
+Import the bundle routes for `dev`:
+
+```yaml
+# config/routes/dev/test_hub.yaml
+test_hub:
+    resource: '@TestHubBundle/config/routes.php'
+    prefix: /_test_hub
+```
+
+Implement `ActionInterface`. With autoconfiguration on, the action appears in the panel:
+
+```php
+namespace App\Sandbox;
+
+use TestHub\Bundle\Action\ActionInterface;
+
+final class PayoutAction implements ActionInterface
+{
+    public function getName(): string { return 'payout'; }
+    public function getLabel(): string { return 'Run payout'; }
+    public function getDescription(): string { return 'Processes approved withdrawals of a gateway.'; }
+
+    /** Form fields, as name => label. */
+    public function getParameters(): array
+    {
+        return ['provider' => 'Provider', 'gateway' => 'Gateway'];
+    }
+
+    public function run(array $parameters): string
+    {
+        // ...
+        return 'Payout finished.';
+    }
+}
+```
+
+`run()` gets the submitted fields as trimmed strings. Its return value is shown in the panel; an exception is shown as a failure. Anything the action prints is captured and shown too. The panel remembers the last values in this browser.
+
 ## Configuration
 
 ```yaml

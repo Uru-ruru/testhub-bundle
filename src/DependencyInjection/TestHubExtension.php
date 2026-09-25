@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace TestHub\Bundle\DependencyInjection;
 
 use Symfony\Component\DependencyInjection\Argument\ServiceClosureArgument;
+use Symfony\Component\DependencyInjection\Argument\TaggedIteratorArgument;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
+use TestHub\Bundle\Action\ActionInterface;
+use TestHub\Bundle\Action\ActionRegistry;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
+use TestHub\Bundle\Controller\ActionController;
 use TestHub\Bundle\DependencyInjection\Compiler\ContextProviderPass;
 use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
@@ -21,6 +25,8 @@ use Twig\Extension\AbstractExtension;
 
 class TestHubExtension extends Extension
 {
+    public const string ACTION_TAG = 'test_hub.action';
+
     public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();
@@ -40,11 +46,24 @@ class TestHubExtension extends Extension
         $container->register(SandBoxRequestLog::class)
             ->addTag('kernel.reset', ['method' => 'reset']);
 
+        $container->registerForAutoconfiguration(ActionInterface::class)
+            ->addTag(self::ACTION_TAG);
+
+        $container->register(ActionRegistry::class)
+            ->setArguments([new TaggedIteratorArgument(self::ACTION_TAG)]);
+
+        $container->register(ActionController::class)
+            ->setArguments([new Reference(ActionRegistry::class)])
+            ->setPublic(true)
+            ->addTag('controller.service_arguments');
+
         $container->register(SandBoxDataCollector::class)
             ->setArguments([
                 new Reference(SandBoxService::class),
                 new Reference(SandBoxRequestLog::class),
                 DefaultContextProvider::class,
+                new Reference(ActionRegistry::class),
+                new Reference('router', ContainerInterface::NULL_ON_INVALID_REFERENCE),
             ])
             ->addTag('data_collector', [
                 'template' => SandBoxDataCollector::getTemplate(),

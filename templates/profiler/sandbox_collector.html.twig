@@ -172,6 +172,130 @@
         })();
     </script>
 
+    <h2 id="test-hub-actions">Actions</h2>
+    {% if collector.actions is empty %}
+        <div class="empty">
+            <p>No actions registered. Implement <code>TestHub\Bundle\Action\ActionInterface</code> to add a button here.</p>
+        </div>
+    {% else %}
+        <p class="help">Each action runs as a new request from this browser, with the controls above applied. Its HTTP calls are in the linked profile.</p>
+        {% for action in collector.actions %}
+            <form class="test-hub-action" method="post" action="{{ action.url }}">
+                <table>
+                    <thead>
+                        <tr>
+                            <th colspan="2">
+                                {{ action.label }}
+                                {% if action.description %}<br><span class="help">{{ action.description }}</span>{% endif %}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for parameter, label in action.parameters %}
+                            <tr>
+                                <th><label for="test-hub-action-{{ action.name }}-{{ parameter }}">{{ label }}</label></th>
+                                <td><input type="text" id="test-hub-action-{{ action.name }}-{{ parameter }}" name="{{ parameter }}" data-remember="test_hub_action_{{ action.name }}_{{ parameter }}"></td>
+                            </tr>
+                        {% endfor %}
+                        <tr>
+                            <th></th>
+                            <td>
+                                {% if action.url %}
+                                    <button type="submit" class="btn btn-sm">{{ action.label }}</button>
+                                {% else %}
+                                    <span class="label status-error">route missing</span>
+                                    Import <code>@TestHubBundle/config/routes.php</code> to run actions.
+                                {% endif %}
+                                <div class="test-hub-action-result" hidden></div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </form>
+        {% endfor %}
+
+        <script>
+            (function () {
+                var storage = {
+                    get: function (key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } },
+                    set: function (key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+                };
+
+                Array.prototype.forEach.call(document.querySelectorAll('form.test-hub-action'), function (form) {
+                    var result = form.querySelector('.test-hub-action-result');
+                    var button = form.querySelector('button[type=submit]');
+
+                    Array.prototype.forEach.call(form.querySelectorAll('input[data-remember]'), function (input) {
+                        input.value = storage.get(input.dataset.remember);
+                    });
+
+                    form.addEventListener('submit', function (event) {
+                        event.preventDefault();
+
+                        if (!button) {
+                            return;
+                        }
+
+                        Array.prototype.forEach.call(form.querySelectorAll('input[data-remember]'), function (input) {
+                            storage.set(input.dataset.remember, input.value);
+                        });
+
+                        button.disabled = true;
+                        result.hidden = false;
+                        result.textContent = 'Running…';
+
+                        var show = function (ok, message, output, profileLink) {
+                            result.textContent = '';
+
+                            var status = document.createElement('span');
+                            status.className = 'label ' + (ok ? 'status-success' : 'status-error');
+                            status.textContent = ok ? 'done' : 'failed';
+                            result.appendChild(status);
+                            result.appendChild(document.createTextNode(' ' + message + ' '));
+
+                            if (profileLink) {
+                                var link = document.createElement('a');
+                                link.href = profileLink + (profileLink.indexOf('?') === -1 ? '?' : '&') + 'panel={{ constant('TestHub\\Bundle\\Collector\\SandBoxDataCollector::NAME') }}';
+                                link.textContent = 'Open profile';
+                                result.appendChild(link);
+                            }
+
+                            if (output) {
+                                var pre = document.createElement('pre');
+                                pre.className = 'sf-dump';
+                                pre.textContent = output;
+                                result.appendChild(pre);
+                            }
+                        };
+
+                        fetch(form.action, {method: 'POST', body: new FormData(form), credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                            .then(function (response) {
+                                var profileLink = response.headers.get('X-Debug-Token-Link');
+
+                                return response.text().then(function (text) {
+                                    var data;
+
+                                    try {
+                                        data = JSON.parse(text);
+                                    } catch (e) {
+                                        data = {ok: false, message: 'HTTP ' + response.status + ', not a JSON response.', output: text.slice(0, 2000)};
+                                    }
+
+                                    show(data.ok, data.message, data.output, profileLink);
+                                });
+                            })
+                            .catch(function (error) {
+                                show(false, String(error), '', null);
+                            })
+                            .finally(function () {
+                                button.disabled = false;
+                            });
+                    });
+                });
+            })();
+        </script>
+    {% endif %}
+
     <h2>HTTP requests</h2>
     {% if collector.requests is empty %}
         <div class="empty">
