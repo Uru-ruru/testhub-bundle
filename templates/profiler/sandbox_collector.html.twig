@@ -1,0 +1,438 @@
+{% extends '@WebProfiler/Profiler/layout.html.twig' %}
+
+{% macro icon() %}
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-sandbox">
+        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+        <path d="M19.953 8.017l1.047 6.983v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-2l1.245 -8.297a2 2 0 0 1 1.977 -1.703h3.778" />
+        <path d="M3 15h18" />
+        <path d="M13 3l5.5 1.5" />
+        <path d="M15.75 3.75l-2 7" />
+        <path d="M7 10.5c1.667 -.667 3.333 -.667 5 0c1.667 .667 3.333 .667 5 0" />
+    </svg>
+{% endmacro %}
+
+{% block toolbar %}
+    {% set icon %}
+        {{ _self.icon() }}
+        <span class="sf-toolbar-value">Sandbox {{ collector.sandbox ? 'on' : 'off' }}</span>
+        {% if collector.requestCount %}
+            <span class="sf-toolbar-info-piece-additional-detail">
+                <span class="sf-toolbar-label">({{ collector.sandboxedCount }}/{{ collector.requestCount }})</span>
+            </span>
+        {% endif %}
+    {% endset %}
+
+    {% set text %}
+        <div class="sf-toolbar-info-piece">
+            <b>Sandbox status</b>
+            <span class="sf-toolbar-status sf-toolbar-status-{{ collector.sandbox ? 'green' : 'red' }}">{{ collector.sandbox ? 'On' : 'Off' }}</span>
+        </div>
+        <div class="sf-toolbar-info-piece">
+            <b>Source</b>
+            <span>{{ collector.override is null ? 'config default' : 'profiler switch' }}</span>
+        </div>
+        <div class="sf-toolbar-info-piece">
+            <b>Sandbox URL</b>
+            <span class="sf-toolbar-status sf-toolbar-status-{{ collector.configured ? 'green' : 'red' }}">{{ collector.configured ? 'Configured' : 'Missing' }}</span>
+        </div>
+        <div class="sf-toolbar-info-piece">
+            <b>HTTP requests</b>
+            <span>{{ collector.sandboxedCount }} sandboxed / {{ collector.requestCount }} total</span>
+        </div>
+        {% if not collector.requestCount %}
+            <div class="sf-toolbar-info-piece">
+                <b>AJAX calls</b>
+                <span>see panel</span>
+            </div>
+        {% endif %}
+        {% if collector.configured %}
+            <div class="sf-toolbar-info-piece">
+                <b>Use sandbox</b>
+                <span>
+                    <a href="#" onclick="document.cookie='{{ constant('TestHub\\Bundle\\Service\\SandBoxService::COOKIE_NAME') }}={{ collector.sandbox ? '0' : '1' }}; path=/; SameSite=Lax'; location.reload(); return false;">{{ collector.sandbox ? 'Turn off' : 'Turn on' }}</a>
+                </span>
+            </div>
+        {% endif %}
+    {% endset %}
+
+    {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', {
+        link: true,
+        status: collector.sandbox ? (collector.errorCount ? 'red' : 'green') : '',
+    }) }}
+{% endblock %}
+
+{% block menu %}
+    <span class="label">
+        <span class="icon">{{ _self.icon() }}</span>
+        <strong>Test Hub</strong>
+        {% if collector.sandboxedCount %}
+            <span class="count">{{ collector.sandboxedCount }}</span>
+        {% endif %}
+    </span>
+{% endblock %}
+
+{% block panel %}
+    {% set cookie_name = constant('TestHub\\Bundle\\Service\\SandBoxService::COOKIE_NAME') %}
+
+    <h2>Test Hub sandbox</h2>
+
+    <div class="metrics">
+        <div class="metric">
+            <span class="value">{{ source('@WebProfiler/Icon/' ~ (collector.sandbox ? 'yes' : 'no') ~ '.svg') }}</span>
+            <span class="label">Sandbox</span>
+        </div>
+
+        <div class="metric-group">
+            <div class="metric">
+                <span class="value">{{ collector.requestCount }}</span>
+                <span class="label">HTTP requests</span>
+            </div>
+
+            <div class="metric">
+                <span class="value">{{ collector.sandboxedCount }}</span>
+                <span class="label">Sent to sandbox</span>
+            </div>
+
+            <div class="metric">
+                <span class="value">{{ collector.errorCount }}</span>
+                <span class="label">Errors</span>
+            </div>
+        </div>
+    </div>
+
+    {% if not collector.configured %}
+        <div class="empty">
+            <p>The sandbox URL is not configured. Set <code>SANDBOX_URL</code> or <code>test_hub.sandbox_url</code>; until then every request goes to its real destination.</p>
+        </div>
+    {% endif %}
+
+    <h2>Controls</h2>
+    <p class="help">These settings are stored as cookies in this browser and apply to the next requests you make.</p>
+    <form method="get" id="sandbox-event-controls" onsubmit="return false;">
+        <table>
+            <tr>
+                <th><label for="sandbox-use">Use sandbox</label></th>
+                <td>
+                    <select id="sandbox-use" name="{{ cookie_name }}" class="sandbox-event-control"{{ collector.configured ? '' : ' disabled' }}>
+                        <option value="">Config default ({{ collector.default ? 'on' : 'off' }})</option>
+                        <option value="1"{{ collector.override is same as(true) ? ' selected' : '' }}>On</option>
+                        <option value="0"{{ collector.override is same as(false) ? ' selected' : '' }}>Off</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="sandbox-deposit-event">Deposit event</label></th>
+                <td>
+                    <select id="sandbox-deposit-event" name="deposit_event" class="sandbox-event-control">
+                        <option value="">-</option>
+                        <option value="success"{{ collector.depositEvent == 'success' ? ' selected' : '' }}>success</option>
+                        <option value="fail"{{ collector.depositEvent == 'fail' ? ' selected' : '' }}>fail</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="sandbox-withdrawal-event">Withdrawal event</label></th>
+                <td>
+                    <select id="sandbox-withdrawal-event" name="withdrawal_event" class="sandbox-event-control">
+                        <option value="">-</option>
+                        <option value="success"{{ collector.withdrawalEvent == 'success' ? ' selected' : '' }}>success</option>
+                        <option value="fail"{{ collector.withdrawalEvent == 'fail' ? ' selected' : '' }}>fail</option>
+                    </select>
+                </td>
+            </tr>
+        </table>
+        <p id="sandbox-controls-saved" class="help" hidden>Saved. Reload your application page to apply.</p>
+    </form>
+
+    <script>
+        (function () {
+            var form = document.getElementById('sandbox-event-controls');
+
+            if (!form) {
+                return;
+            }
+
+            var readCookie = function (name) {
+                var match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+
+                return match ? decodeURIComponent(match[1]) : '';
+            };
+
+            Array.prototype.forEach.call(form.querySelectorAll('.sandbox-event-control'), function (control) {
+                // The profile shows a past request; the cookie holds what the next request will use.
+                control.value = readCookie(control.name);
+
+                control.addEventListener('change', function () {
+                    document.cookie = control.value === ''
+                        ? control.name + '=; path=/; max-age=0; SameSite=Lax'
+                        : control.name + '=' + encodeURIComponent(control.value) + '; path=/; SameSite=Lax';
+                    document.getElementById('sandbox-controls-saved').hidden = false;
+                });
+            });
+        })();
+    </script>
+
+    <h2 id="test-hub-actions">Actions</h2>
+    {% if collector.actions is empty %}
+        <div class="empty">
+            <p>No actions registered. Implement <code>TestHub\Bundle\Action\ActionInterface</code> to add a button here.</p>
+        </div>
+    {% else %}
+        <p class="help">Each action runs as a new request from this browser, with the controls above applied. Its HTTP calls are in the linked profile.</p>
+        {% for action in collector.actions %}
+            <form class="test-hub-action" method="post" action="{{ action.url }}">
+                <table>
+                    <thead>
+                        <tr>
+                            <th colspan="2">
+                                {{ action.label }}
+                                {% if action.description %}<br><span class="help">{{ action.description }}</span>{% endif %}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for parameter, label in action.parameters %}
+                            <tr>
+                                <th><label for="test-hub-action-{{ action.name }}-{{ parameter }}">{{ label }}</label></th>
+                                <td><input type="text" id="test-hub-action-{{ action.name }}-{{ parameter }}" name="{{ parameter }}" data-remember="test_hub_action_{{ action.name }}_{{ parameter }}"></td>
+                            </tr>
+                        {% endfor %}
+                        <tr>
+                            <th></th>
+                            <td>
+                                {% if action.url %}
+                                    <button type="submit" class="btn btn-sm">{{ action.label }}</button>
+                                {% else %}
+                                    <span class="label status-error">route missing</span>
+                                    Import <code>@TestHubBundle/config/routes.php</code> to run actions.
+                                {% endif %}
+                                <div class="test-hub-action-result" hidden></div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </form>
+        {% endfor %}
+
+        <script>
+            (function () {
+                var storage = {
+                    get: function (key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } },
+                    set: function (key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+                };
+
+                Array.prototype.forEach.call(document.querySelectorAll('form.test-hub-action'), function (form) {
+                    var result = form.querySelector('.test-hub-action-result');
+                    var button = form.querySelector('button[type=submit]');
+
+                    Array.prototype.forEach.call(form.querySelectorAll('input[data-remember]'), function (input) {
+                        input.value = storage.get(input.dataset.remember);
+                    });
+
+                    form.addEventListener('submit', function (event) {
+                        event.preventDefault();
+
+                        if (!button) {
+                            return;
+                        }
+
+                        Array.prototype.forEach.call(form.querySelectorAll('input[data-remember]'), function (input) {
+                            storage.set(input.dataset.remember, input.value);
+                        });
+
+                        button.disabled = true;
+                        result.hidden = false;
+                        result.textContent = 'Running…';
+
+                        var show = function (ok, message, output, profileLink) {
+                            result.textContent = '';
+
+                            var status = document.createElement('span');
+                            status.className = 'label ' + (ok ? 'status-success' : 'status-error');
+                            status.textContent = ok ? 'done' : 'failed';
+                            result.appendChild(status);
+                            result.appendChild(document.createTextNode(' ' + message + ' '));
+
+                            if (profileLink) {
+                                var link = document.createElement('a');
+                                link.href = profileLink + (profileLink.indexOf('?') === -1 ? '?' : '&') + 'panel={{ constant('TestHub\\Bundle\\Collector\\SandBoxDataCollector::NAME') }}';
+                                link.textContent = 'Open profile';
+                                result.appendChild(link);
+                            }
+
+                            if (output) {
+                                var pre = document.createElement('pre');
+                                pre.className = 'sf-dump';
+                                pre.textContent = output;
+                                result.appendChild(pre);
+                            }
+                        };
+
+                        fetch(form.action, {method: 'POST', body: new FormData(form), credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                            .then(function (response) {
+                                var profileLink = response.headers.get('X-Debug-Token-Link');
+
+                                return response.text().then(function (text) {
+                                    var data;
+
+                                    try {
+                                        data = JSON.parse(text);
+                                    } catch (e) {
+                                        data = {ok: false, message: 'HTTP ' + response.status + ', not a JSON response.', output: text.slice(0, 2000)};
+                                    }
+
+                                    show(data.ok, data.message, data.output, profileLink);
+                                });
+                            })
+                            .catch(function (error) {
+                                show(false, String(error), '', null);
+                            })
+                            .finally(function () {
+                                button.disabled = false;
+                            });
+                    });
+                });
+            })();
+        </script>
+    {% endif %}
+
+    <h2>HTTP requests</h2>
+    {% if collector.requests is empty %}
+        <div class="empty">
+            <p>No HTTP requests were made through <code>http_client</code> during this request. If the page sends them from an AJAX call or after a redirect, they are in that request's profile: see <a href="#test-hub-recent">Recent sandbox traffic</a> below.</p>
+        </div>
+    {% else %}
+        {% for request in collector.requests %}
+            <table class="{{ request.error or request.status_code >= 400 ? 'status-error' : '' }}">
+                <thead>
+                    <tr>
+                        <th class="nowrap">
+                            {% if request.sandboxed %}
+                                <span class="label status-success">sandbox</span>
+                            {% else %}
+                                <span class="label">real</span>
+                            {% endif %}
+                            {{ request.method }}
+                        </th>
+                        <th class="full-width">{{ request.url }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if request.sandboxed %}
+                        <tr>
+                            <th>Sent to</th>
+                            <td>{{ request.target_url }}</td>
+                        </tr>
+                        <tr>
+                            <th>Type / event</th>
+                            <td>{{ request.type ?? '(wrap)' }} / {{ request.event }}</td>
+                        </tr>
+                    {% endif %}
+                    <tr>
+                        <th>Status</th>
+                        <td>
+                            {% if request.error %}
+                                <span class="label status-error">{{ request.error }}</span>
+                            {% elseif request.status_code %}
+                                <span class="label {{ request.status_code >= 400 ? 'status-error' : 'status-success' }}">{{ request.status_code }}</span>
+                            {% else %}
+                                <span class="label">no response</span>
+                            {% endif %}
+                            {% if request.duration is not null %}
+                                <span class="text-muted">{{ '%.0f'|format(request.duration) }} ms</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Request options</th>
+                        <td>{{ profiler_dump(request.options, maxDepth=2) }}</td>
+                    </tr>
+                    <tr>
+                        <th>Response headers</th>
+                        <td>{{ profiler_dump(request.response_headers, maxDepth=1) }}</td>
+                    </tr>
+                    {% if request.response_body is not null %}
+                        <tr>
+                            <th>Response body</th>
+                            <td>
+                                {% if request.response_body is iterable %}
+                                    {{ profiler_dump(request.response_body, maxDepth=3) }}
+                                {% else %}
+                                    <pre class="sf-dump">{{ request.response_body }}</pre>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        {% endfor %}
+    {% endif %}
+
+    {% set recent = test_hub_recent_profiles(token) %}
+    <h2 id="test-hub-recent">Recent sandbox traffic</h2>
+    <p class="help">Other recent requests that made HTTP calls, including AJAX calls and requests before a redirect.</p>
+    {% if recent is empty %}
+        <div class="empty">
+            <p>No other recent request made HTTP calls.</p>
+        </div>
+    {% else %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Request</th>
+                    <th class="nowrap">HTTP calls</th>
+                    <th class="nowrap">Sandboxed</th>
+                    <th>Profile</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for profile in recent %}
+                    <tr class="{{ profile.errors ? 'status-error' : '' }}">
+                        <td class="nowrap">{{ profile.time|date('H:i:s') }}</td>
+                        <td>{{ profile.method }} {{ profile.url }}</td>
+                        <td>{{ profile.requests }}</td>
+                        <td>{{ profile.sandboxed }}{% if profile.errors %} <span class="label status-error">{{ profile.errors }} error{{ profile.errors > 1 ? 's' }}</span>{% endif %}</td>
+                        <td><a href="{{ path('_profiler', {token: profile.token, panel: 'test_hub'}) }}">{{ profile.token }}</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <h2>Configuration</h2>
+    <table>
+        <tr>
+            <th>Default state</th>
+            <td>{{ collector.default ? 'On' : 'Off' }}</td>
+        </tr>
+        <tr>
+            <th>This request</th>
+            <td>{{ collector.sandbox ? 'On' : 'Off' }} ({{ collector.override is null ? 'config default' : 'profiler switch' }})</td>
+        </tr>
+        <tr>
+            <th>Url</th>
+            <td>{{ collector.url }}</td>
+        </tr>
+        <tr>
+            <th>Wrap url</th>
+            <td>{{ collector.urlWrap }}</td>
+        </tr>
+        <tr>
+            <th>Context provider</th>
+            <td>{{ collector.contextProvider }}</td>
+        </tr>
+        <tr>
+            <th>Api key</th>
+            <td>{{ collector.apikey }}</td>
+        </tr>
+        <tr>
+            <th>Tests</th>
+            <td>{{ collector.tests ? 'On' : 'Off' }}</td>
+        </tr>
+        <tr>
+            <th>Collected at</th>
+            <td>{{ collector.time|round|date('Y-m-d H:i:s') }}</td>
+        </tr>
+    </table>
+{% endblock %}

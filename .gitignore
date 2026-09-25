@@ -1,5 +1,7 @@
+.idea
 /vendor/
 .phpunit.result.cache
+.php-cs-fixer.cache
 composer.lock
 ### Symfony template
 # Cache and logs (Symfony2)
@@ -54,3 +56,4 @@ composer.lock
 # Embedded web-server pid file
 /.web-server-pid
 
+/.phpunit.cache/
