@@ -118,6 +118,23 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->assertSame('http://sandbox.test/api_wrap', $this->sent[0]['url']);
     }
 
+    public function testAgentAndSubAgentAreSentAsHeaders(): void
+    {
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit', subagent: 'nexumpay-eu'));
+
+        $this->assertContains(SandBoxService::AGENT_HEADER.': nexumpay', $this->sent[0]['options']['headers']);
+        $this->assertContains(SandBoxService::SUBAGENT_HEADER.': nexumpay-eu', $this->sent[0]['options']['headers']);
+    }
+
+    public function testUnknownAgentAndSubAgentAreNotSentAsHeaders(): void
+    {
+        // A null header value clears a same-named default header of the decorated client, so nothing is set.
+        $this->sendWithContext(new AppContext('https://psp.test', null));
+
+        $this->assertArrayNotHasKey(SandBoxService::AGENT_HEADER, $this->sent[0]['options']['normalized_headers']);
+        $this->assertArrayNotHasKey(SandBoxService::SUBAGENT_HEADER, $this->sent[0]['options']['normalized_headers']);
+    }
+
     public function testMissingAgentFallsBackToWrapEndpoint(): void
     {
         $collector = new AppContextCollector();
