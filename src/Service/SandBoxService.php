@@ -10,6 +10,8 @@ class SandBoxService
 
     public const string API_KEY_HEADER = 'sandbox-api-key';
     public const string URL_HEADER = 'sandbox-url';
+    public const string AGENT_HEADER = 'sandbox-agent';
+    public const string SUBAGENT_HEADER = 'sandbox-subagent';
     public const string EVENT_HEADER = 'sandbox-event';
 
     /**

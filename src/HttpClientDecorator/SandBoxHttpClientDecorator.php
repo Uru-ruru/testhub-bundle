@@ -58,10 +58,13 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
 
         $context = $this->getCurrentContext();
         $type ??= $this->getContextType($context);
+        $agent ??= $this->getContextValue($context, 'getAgent');
+        $subagent ??= $this->getContextValue($context, 'getSubAgent');
 
         $originalUrl = $this->resolveOriginalUrl($url, $options);
         $sandboxUrl = $this->setSandBoxRequestUrl($type, $this->getContextValue($context, 'getAgent'));
-        $options = $this->resetOptions($options, $originalUrl, $type);
+        $options = $this->makeOptions($options, $originalUrl, $type, $agent, $subagent);
+        $options = $this->resetOptions($options);
 
         $response = $this->client->request($method, $sandboxUrl, $options);
         $this->log($method, $originalUrl, $sandboxUrl, $type, $options['headers'][SandBoxService::EVENT_HEADER], true, $options, $response);
@@ -118,20 +121,27 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         return \is_string($value) && '' !== $value ? $value : null;
     }
 
-    /**
-     * @param array<mixed> $options
-     *
-     * @return array<mixed>
-     */
-    private function resetOptions(array $options, string $url, ?string $type): array
+    private function makeOptions(array $options, string $url, ?string $type, ?string $agent, ?string $subagent): array
     {
         $options['headers'][SandBoxService::URL_HEADER] = $url;
         $options['headers'][SandBoxService::EVENT_HEADER] = $this->getEvent($type);
+        $options['headers'][SandBoxService::AGENT_HEADER] = $agent;
+        $options['headers'][SandBoxService::SUBAGENT_HEADER] = $subagent;
 
         if ('' !== $this->sandboxService->getApiKey()) {
             $options['headers'][SandBoxService::API_KEY_HEADER] = $this->sandboxService->getApiKey();
         }
 
+        return $options;
+    }
+
+    /**
+     * @param array<mixed> $options
+     *
+     * @return array<mixed>
+     */
+    private function resetOptions(array $options): array
+    {
         unset($options[self::PROXY_HEADER], $options['base_uri']);
 
         return $options;
