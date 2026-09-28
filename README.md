@@ -158,10 +158,14 @@ test_hub:
     sandbox_url: '%env(string:default::SANDBOX_URL)%'
     use_sandbox: '%env(bool:default::USE_SANDBOX)%'
     api_key: '%env(string:default::SANDBOX_API_KEY)%'
+    sandbox_cafile: '%env(string:default::SANDBOX_CAFILE)%'
+    sandbox_verify_peer: true
     # context_provider: App\Sandbox\CurrentAgentProvider  # only needed to override detection
 ```
 
 Until `sandbox_url` is set, the sandbox stays off, whatever the switch says.
+
+If the sandbox uses a self-signed or private-CA certificate, point `sandbox_cafile` at its CA bundle, or set `sandbox_verify_peer: false` to skip the certificate and host name checks. Both apply only to requests sent to the sandbox. Requests to real APIs, including ones the sandbox passes through unchanged, keep the normal certificate checks.
 
 ## Testing
 

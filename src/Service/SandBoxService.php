@@ -26,7 +26,30 @@ class SandBoxService
         private readonly string $apiKey = '',
         private readonly bool $useSandbox = false,
         private readonly string $sandboxUrl = '',
+        private readonly string $cafile = '',
+        private readonly bool $verifyPeer = true,
     ) {
+    }
+
+    /**
+     * TLS options for requests sent to the sandbox. Empty when the defaults apply.
+     *
+     * @return array<string, bool|string>
+     */
+    public function getTlsOptions(): array
+    {
+        $options = [];
+
+        if ('' !== $this->cafile) {
+            $options['cafile'] = $this->cafile;
+        }
+
+        if (!$this->verifyPeer) {
+            $options['verify_peer'] = false;
+            $options['verify_host'] = false;
+        }
+
+        return $options;
     }
 
     public function getApiKey(): string

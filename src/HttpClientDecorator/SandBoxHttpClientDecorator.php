@@ -50,19 +50,21 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         unset($options['extra'][SandBoxService::SANDBOX_TYPE], $options['extra']['curl'][SandBoxService::SANDBOX_TYPE]);
 
         if (!$this->sandboxService->isEnabledFor($this->requestStack->getMainRequest())) {
-            $response = $this->client->request($method, $url, $options);
-            $this->log($method, $url, $url, $type, null, false, $options, $response);
-
-            return $response;
+            return $this->passThrough($method, $url, $type, $options);
         }
 
         $context = $this->getCurrentContext();
         $type ??= $this->getContextType($context);
         $agent = $this->getContextValue($context, 'getAgent');
-        $subagent = $this->getContextValue($context, 'getSubAgent');
 
+        // The sandbox cannot route a request without an agent and a type, so it goes to the real API unchanged.
+        if (null === $type || null === $agent) {
+            return $this->passThrough($method, $url, $type, $options);
+        }
+
+        $subagent = $this->getContextValue($context, 'getSubAgent');
         $originalUrl = $this->resolveOriginalUrl($url, $options);
-        $sandboxUrl = $this->setSandBoxRequestUrl($type, $agent);
+        $sandboxUrl = $this->sandboxService->getUrl().'/'.$agent.'/'.$type.'/'.$this->getEvent($type);
         $options = $this->prepareOptions($options, $originalUrl, $type, $agent, $subagent);
 
         $response = $this->client->request($method, $sandboxUrl, $options);
@@ -71,13 +73,18 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         return $response;
     }
 
-    private function setSandBoxRequestUrl(?string $type, ?string $agent): string
+    /**
+     * @param array<mixed> $options
+     *
+     * @throws TransportExceptionInterface
+     */
+    private function passThrough(string $method, string $url, ?string $type, array $options): ResponseInterface
     {
-        if (null === $type || null === $agent) {
-            return $this->sandboxService->getUrlWrap();
-        }
+        $response = $this->client->request($method, $url, $options);
+        $originalUrl = $this->resolveOriginalUrl($url, $options);
+        $this->log($method, $originalUrl, $originalUrl, $type, null, false, $options, $response);
 
-        return $this->sandboxService->getUrl().'/'.$agent.'/'.$type.'/'.$this->getEvent($type);
+        return $response;
     }
 
     /**
@@ -121,7 +128,7 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
     }
 
     /**
-     * Adds the sandbox headers and drops the options that must not reach the transport.
+     * Adds the sandbox headers and TLS options, and drops the options that must not reach the transport.
      *
      * @param array<mixed> $options
      *
@@ -145,7 +152,8 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
 
         unset($options[self::PROXY_HEADER], $options['base_uri']);
 
-        return $options;
+        // Only requests rewritten to the sandbox get its TLS options; every other host keeps the normal checks.
+        return $this->sandboxService->getTlsOptions() + $options;
     }
 
     /**
