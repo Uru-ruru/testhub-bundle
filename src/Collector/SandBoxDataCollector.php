@@ -49,7 +49,6 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
         $this->data['tests'] = false;
         $this->data['apikey'] = $this->sandboxService->getApiKey();
         $this->data['url'] = $this->sandboxService->getUrl();
-        $this->data['url_wrap'] = $this->sandboxService->getUrlWrap();
         $this->data['context_provider'] = $this->contextProvider;
         $this->data['time'] = microtime(true);
         $this->data['requests'] = [];
@@ -144,11 +143,6 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
     public function getUrl(): string
     {
         return $this->data['url'];
-    }
-
-    public function getUrlWrap(): string
-    {
-        return $this->data['url_wrap'] ?? '';
     }
 
     public function getContextProvider(): string

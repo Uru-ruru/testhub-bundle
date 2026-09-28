@@ -12,6 +12,7 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
 use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
+use TestHub\Bundle\HttpClient\UrlResolver;
 use TestHub\Bundle\Service\SandBoxService;
 
 final class SandBoxHttpClientDecorator implements HttpClientInterface
@@ -53,17 +54,17 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
             return $this->passThrough($method, $url, $type, $options);
         }
 
-        $context = $this->getCurrentContext();
+        $originalUrl = $this->resolveOriginalUrl($url, $options);
+        $context = $this->getCurrentContext($originalUrl);
         $type ??= $this->getContextType($context);
         $agent = $this->getContextValue($context, 'getAgent');
 
-        // The sandbox cannot route a request without an agent and a type, so it goes to the real API unchanged.
+        // Only provider traffic goes to the sandbox. Anything else (auth, internal services) goes to the real API unchanged.
         if (null === $type || null === $agent) {
             return $this->passThrough($method, $url, $type, $options);
         }
 
         $subagent = $this->getContextValue($context, 'getSubAgent');
-        $originalUrl = $this->resolveOriginalUrl($url, $options);
         $sandboxUrl = $this->sandboxService->getUrl().'/'.$agent.'/'.$type.'/'.$this->getEvent($type);
         $options = $this->prepareOptions($options, $originalUrl, $type, $agent, $subagent);
 
@@ -89,15 +90,30 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
 
     /**
      * The provider collects one context per outgoing request, so the last one belongs to the request being sent.
+     * A request without its own context (e.g. an auth call made after a deposit) would still see the previous one,
+     * so a context whose getUrl() points to another host is ignored.
      * Any service with a get(): array method works, so applications can keep their own provider interface.
      */
-    private function getCurrentContext(): ?object
+    private function getCurrentContext(string $url): ?object
     {
         $provider = $this->contextCollector instanceof \Closure ? ($this->contextCollector)() : $this->contextCollector;
         $contexts = $provider->get();
         $context = $contexts ? end($contexts) : null;
 
-        return \is_object($context) ? $context : null;
+        if (!\is_object($context)) {
+            return null;
+        }
+
+        $contextHost = $this->getHost($this->getContextValue($context, 'getUrl'));
+
+        return null === $contextHost || $contextHost === $this->getHost($url) ? $context : null;
+    }
+
+    private function getHost(?string $url): ?string
+    {
+        $host = null !== $url ? parse_url($url, \PHP_URL_HOST) : null;
+
+        return \is_string($host) && '' !== $host ? strtolower($host) : null;
     }
 
     /**
@@ -157,6 +173,8 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
     }
 
     /**
+     * The URL HttpClient will actually call: a leading "/" replaces the base_uri path, "../" climbs out of it.
+     *
      * @param array<mixed> $options
      */
     private function resolveOriginalUrl(string $url, array $options): string
@@ -167,7 +185,7 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
             return $url;
         }
 
-        return rtrim($baseUri, '/').'/'.ltrim($url, '/');
+        return UrlResolver::resolve($baseUri, $url);
     }
 
     private function getEvent(?string $type): string

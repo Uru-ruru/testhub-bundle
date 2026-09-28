@@ -20,7 +20,6 @@ class SandBoxService
     public const string COOKIE_NAME = 'testhub_sandbox';
 
     private const string API_PREFIX = '/api';
-    private const string API_PREFIX_WRAP = '/api_wrap';
 
     public function __construct(
         private readonly string $apiKey = '',
@@ -91,10 +90,5 @@ class SandBoxService
     public function getUrl(): string
     {
         return $this->sandboxUrl.self::API_PREFIX;
-    }
-
-    public function getUrlWrap(): string
-    {
-        return $this->sandboxUrl.self::API_PREFIX_WRAP;
     }
 }
