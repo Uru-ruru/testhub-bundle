@@ -11,6 +11,7 @@ final class AppContext
         private readonly ?string $agent = null,
         private readonly ?string $direction = null,
         private readonly ?string $operation = null,
+        private readonly ?string $subagent = null,
     ) {
     }
 
@@ -22,6 +23,11 @@ final class AppContext
     public function getAgent(): ?string
     {
         return $this->agent;
+    }
+
+    public function getSubAgent(): ?string
+    {
+        return $this->subagent;
     }
 
     public function getDirection(): ?string

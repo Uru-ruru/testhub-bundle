@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TestHub\Bundle\Tests\HttpClientDecorator;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
@@ -115,10 +116,28 @@ class SandBoxHttpClientDecoratorTest extends TestCase
     {
         $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'unknown', operation: 'status'));
 
-        $this->assertSame('http://sandbox.test/api_wrap', $this->sent[0]['url']);
+        $this->assertSame('https://psp.test/pay', $this->sent[0]['url']);
+        $this->assertFalse($this->log->all()[0]['request']['sandboxed']);
     }
 
-    public function testMissingAgentFallsBackToWrapEndpoint(): void
+    public function testAgentAndSubAgentAreSentAsHeaders(): void
+    {
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit', subagent: 'nexumpay-eu'));
+
+        $this->assertContains(SandBoxService::AGENT_HEADER.': nexumpay', $this->sent[0]['options']['headers']);
+        $this->assertContains(SandBoxService::SUBAGENT_HEADER.': nexumpay-eu', $this->sent[0]['options']['headers']);
+    }
+
+    public function testUnknownAgentAndSubAgentAreNotSentAsHeaders(): void
+    {
+        // A null header value clears a same-named default header of the decorated client, so nothing is set.
+        $this->sendWithContext(new AppContext('https://psp.test', null));
+
+        $this->assertArrayNotHasKey(SandBoxService::AGENT_HEADER, $this->sent[0]['options']['normalized_headers']);
+        $this->assertArrayNotHasKey(SandBoxService::SUBAGENT_HEADER, $this->sent[0]['options']['normalized_headers']);
+    }
+
+    public function testRequestWithoutAgentPassesThrough(): void
     {
         $collector = new AppContextCollector();
         $collector->collect(new AppContext('https://real-api.test', null));
@@ -127,7 +146,7 @@ class SandBoxHttpClientDecoratorTest extends TestCase
             'extra' => [SandBoxService::SANDBOX_TYPE => 'deposit'],
         ]);
 
-        $this->assertSame('http://sandbox.test/api_wrap', $this->sent[0]['url']);
+        $this->assertSame('https://real-api.test/pay', $this->sent[0]['url']);
     }
 
     public function testProviderIsResolvedLazily(): void
@@ -144,11 +163,69 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->assertFalse($built);
     }
 
-    public function testUntypedRequestIsSentToWrapEndpoint(): void
+    public function testUntypedRequestPassesThrough(): void
     {
-        $this->createDecorator(useSandbox: true)->request('GET', '/data', ['base_uri' => 'https://real-api.test/v1/']);
+        // e.g. an auth call to an internal service while the sandbox is on
+        $this->createDecorator(useSandbox: true)->request('POST', 'oauth/token', ['base_uri' => 'https://auth.test/v1/']);
 
-        $this->assertSame('http://sandbox.test/api_wrap', $this->sent[0]['url']);
+        $this->assertSame('https://auth.test/v1/oauth/token', $this->sent[0]['url']);
+        $this->assertArrayNotHasKey(SandBoxService::URL_HEADER, $this->sent[0]['options']['normalized_headers']);
+        $this->assertArrayNotHasKey(SandBoxService::API_KEY_HEADER, $this->sent[0]['options']['normalized_headers']);
+        $this->assertSame('https://auth.test/v1/oauth/token', $this->log->all()[0]['request']['url']);
+        $this->assertFalse($this->log->all()[0]['request']['sandboxed']);
+    }
+
+    #[DataProvider('provideBaseUriReferences')]
+    public function testLoggedUrlMatchesTheUrlHttpClientCalls(string $url): void
+    {
+        $this->createDecorator(useSandbox: false)->request('GET', $url, ['base_uri' => 'https://real-api.test/v1/']);
+
+        $this->assertSame($this->sent[0]['url'], $this->log->all()[0]['request']['url']);
+    }
+
+    /**
+     * @return iterable<array{string}>
+     */
+    public static function provideBaseUriReferences(): iterable
+    {
+        yield 'relative' => ['data'];
+        yield 'absolute path' => ['/oauth/token'];
+        yield 'parent' => ['../v2/data'];
+        yield 'query' => ['data?page=2'];
+    }
+
+    public function testAbsolutePathReplacesBaseUriPathInUrlHeader(): void
+    {
+        $this->createDecorator(useSandbox: true)->request('GET', '/balance', [
+            'base_uri' => 'https://real-api.test/v1/',
+            'extra' => [SandBoxService::SANDBOX_TYPE => 'balance'],
+        ]);
+
+        $this->assertContains(SandBoxService::URL_HEADER.': https://real-api.test/balance', $this->sent[0]['options']['headers']);
+    }
+
+    public function testContextOfAnotherHostIsIgnored(): void
+    {
+        $collector = new AppContextCollector();
+        $decorator = $this->createDecorator(useSandbox: true, contextProvider: $collector);
+
+        $collector->collect(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit'));
+        $decorator->request('POST', 'https://psp.test/pay');
+        // The auth call collects no context of its own, so the provider still returns the deposit one.
+        $decorator->request('POST', 'https://auth.test/oauth/token');
+
+        $this->assertSame('http://sandbox.test/api/nexumpay/deposit/success', $this->sent[0]['url']);
+        $this->assertSame('https://auth.test/oauth/token', $this->sent[1]['url']);
+    }
+
+    public function testBaseUriIsResolvedIntoUrlHeader(): void
+    {
+        $this->createDecorator(useSandbox: true)->request('GET', 'data', [
+            'base_uri' => 'https://real-api.test/v1/',
+            'extra' => [SandBoxService::SANDBOX_TYPE => 'balance'],
+        ]);
+
+        $this->assertSame('http://sandbox.test/api/test-agent/balance/success', $this->sent[0]['url']);
         $this->assertContains(SandBoxService::URL_HEADER.': https://real-api.test/v1/data', $this->sent[0]['options']['headers']);
     }
 
@@ -165,14 +242,16 @@ class SandBoxHttpClientDecoratorTest extends TestCase
 
     public function testProfilerCookieOverridesConfigDefault(): void
     {
+        $options = ['extra' => [SandBoxService::SANDBOX_TYPE => 'balance']];
+
         $this->pushRequest([SandBoxService::COOKIE_NAME => '1']);
-        $this->createDecorator(useSandbox: false)->request('GET', 'https://real-api.test/data');
-        $this->assertSame('http://sandbox.test/api_wrap', $this->sent[0]['url']);
+        $this->createDecorator(useSandbox: false)->request('GET', 'https://real-api.test/data', $options);
+        $this->assertSame('http://sandbox.test/api/test-agent/balance/success', $this->sent[0]['url']);
 
         $this->sent = [];
         $this->requestStack->pop();
         $this->pushRequest([SandBoxService::COOKIE_NAME => '0']);
-        $this->createDecorator(useSandbox: true)->request('GET', 'https://real-api.test/data');
+        $this->createDecorator(useSandbox: true)->request('GET', 'https://real-api.test/data', $options);
         $this->assertSame('https://real-api.test/data', $this->sent[0]['url']);
     }
 
@@ -184,25 +263,50 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->assertSame('https://real-api.test/data', $this->sent[0]['url']);
     }
 
+    public function testSandboxTlsOptionsAreAppliedToSandboxRequests(): void
+    {
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit'), [
+            'verify_peer' => true,
+        ], new SandBoxService('key', true, 'http://sandbox.test', '/certs/sandbox.pem', false));
+
+        $this->assertSame('http://sandbox.test/api/nexumpay/deposit/success', $this->sent[0]['url']);
+        $this->assertSame('/certs/sandbox.pem', $this->sent[0]['options']['cafile']);
+        $this->assertFalse($this->sent[0]['options']['verify_peer']);
+        $this->assertFalse($this->sent[0]['options']['verify_host']);
+    }
+
+    public function testSandboxTlsOptionsAreNotAppliedToOtherHosts(): void
+    {
+        $this->createDecorator(useSandbox: false, sandboxService: new SandBoxService('key', false, 'http://sandbox.test', '/certs/sandbox.pem', false))
+            ->request('GET', 'https://real-api.test/data');
+
+        $this->assertSame('https://real-api.test/data', $this->sent[0]['url']);
+        foreach (['cafile', 'verify_peer', 'verify_host'] as $option) {
+            $this->assertArrayNotHasKey($option, $this->sent[0]['options']);
+        }
+    }
+
     public function testRequestsAreLogged(): void
     {
-        $this->createDecorator(useSandbox: true)->request('GET', 'https://real-api.test/data');
+        $this->createDecorator(useSandbox: true)->request('GET', 'https://real-api.test/data', [
+            'extra' => [SandBoxService::SANDBOX_TYPE => 'balance'],
+        ]);
 
         $entry = $this->log->all()[0]['request'];
         $this->assertTrue($entry['sandboxed']);
         $this->assertSame('https://real-api.test/data', $entry['url']);
-        $this->assertSame('http://sandbox.test/api_wrap', $entry['target_url']);
+        $this->assertSame('http://sandbox.test/api/test-agent/balance/success', $entry['target_url']);
     }
 
     /**
      * @param array<mixed> $options
      */
-    private function sendWithContext(AppContext $context, array $options = []): void
+    private function sendWithContext(AppContext $context, array $options = [], ?SandBoxService $sandboxService = null): void
     {
         $collector = new AppContextCollector();
         $collector->collect($context);
 
-        $this->createDecorator(useSandbox: true, contextProvider: $collector)->request('POST', 'https://psp.test/pay', $options);
+        $this->createDecorator(useSandbox: true, contextProvider: $collector, sandboxService: $sandboxService)->request('POST', 'https://psp.test/pay', $options);
     }
 
     /**
@@ -213,7 +317,7 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->requestStack->push(new Request(cookies: $cookies));
     }
 
-    private function createDecorator(bool $useSandbox, string $sandboxUrl = 'http://sandbox.test', string $apiKey = 'key', ?object $contextProvider = null): SandBoxHttpClientDecorator
+    private function createDecorator(bool $useSandbox, string $sandboxUrl = 'http://sandbox.test', string $apiKey = 'key', ?object $contextProvider = null, ?SandBoxService $sandboxService = null): SandBoxHttpClientDecorator
     {
         $client = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $this->sent[] = ['method' => $method, 'url' => $url, 'options' => $options];
@@ -236,7 +340,7 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         return new SandBoxHttpClientDecorator(
             $client,
             $contextProvider,
-            new SandBoxService($apiKey, $useSandbox, $sandboxUrl),
+            $sandboxService ?? new SandBoxService($apiKey, $useSandbox, $sandboxUrl),
             $this->requestStack,
             $this->log,
         );

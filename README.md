@@ -32,9 +32,9 @@ The bundle also checks the kernel environment: in any environment not listed in 
 
 1. Open any page and click **Test Hub** in the debug toolbar (or use its **Turn on** link).
 2. In the panel, set **Use sandbox** to *On*. The choice is saved in the `testhub_sandbox` cookie for this browser.
-3. Reload your page. Every request made through `http_client`, including scoped clients, now goes to the sandbox:
+3. Reload your page. Provider requests made through `http_client`, including scoped clients, now go to the sandbox:
    - requests with a type (see [Request type](#request-type)) and an agent go to `{SANDBOX_URL}/api/{agent}/{type}/{event}`
-   - any other request goes to `{SANDBOX_URL}/api_wrap`
+   - any other request, such as auth or calls to internal services, goes to the real API unchanged
 
    The original URL is sent in the `sandbox-url` header, the event in the `sandbox-event` header and `SANDBOX_API_KEY` in the `sandbox-api-key` header. The API key is sent only to the sandbox, never to real APIs, and is left out when it is empty.
 4. The panel lists each outgoing request: original URL, sandbox URL, type/event, status, timing, request options, response headers and the sandbox response body.
@@ -54,7 +54,7 @@ The type in the sandbox URL is resolved in this order:
    ]);
    ```
 2. The request context's `getDirection()`, then `getOperation()`, when the value is `deposit`, `withdraw` or `withdrawal`. Deposits and withdrawals need no tagging.
-3. Otherwise the request goes to `/api_wrap`.
+3. Otherwise the request is not sent to the sandbox.
 
 The **Deposit event** and **Withdrawal event** selectors apply to `deposit` and to `withdraw`/`withdrawal`. Every other type gets `success`.
 
@@ -66,7 +66,9 @@ Console commands and workers have no browser cookie, so they use `use_sandbox`.
 
 ## Agent context
 
-The `{agent}` path segment comes from a context provider service. Its `get()` returns the contexts collected so far, one per outgoing request. The bundle uses the **last** one, which belongs to the request being sent, and calls its `getAgent()`. If the list is empty or the agent is null or empty, the request goes to `/api_wrap`.
+The `{agent}` path segment comes from a context provider service. Its `get()` returns the contexts collected so far, one per outgoing request. The bundle uses the **last** one, which belongs to the request being sent, and calls its `getAgent()`. If the list is empty or the agent is null or empty, the request is not sent to the sandbox.
+
+A request that collects no context of its own, for example an auth call made after a deposit, would still see the previous request's context. If the context has a `getUrl()` method, the bundle uses the context only when its host matches the request's host, so such calls go to the real API. Contexts without `getUrl()` are always used.
 
 Implement the interface in your application. With autoconfiguration on (the Symfony default), the bundle finds your implementation and uses it instead of its empty `DefaultContextProvider`. You don't need any configuration:
 
@@ -158,10 +160,14 @@ test_hub:
     sandbox_url: '%env(string:default::SANDBOX_URL)%'
     use_sandbox: '%env(bool:default::USE_SANDBOX)%'
     api_key: '%env(string:default::SANDBOX_API_KEY)%'
+    sandbox_cafile: '%env(string:default::SANDBOX_CAFILE)%'
+    sandbox_verify_peer: true
     # context_provider: App\Sandbox\CurrentAgentProvider  # only needed to override detection
 ```
 
 Until `sandbox_url` is set, the sandbox stays off, whatever the switch says.
+
+If the sandbox uses a self-signed or private-CA certificate, point `sandbox_cafile` at its CA bundle, or set `sandbox_verify_peer: false` to skip the certificate and host name checks. Both apply only to requests sent to the sandbox. Requests to real APIs, including ones the sandbox passes through unchanged, keep the normal certificate checks.
 
 ## Testing
 

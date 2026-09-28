@@ -38,6 +38,8 @@ class TestHubExtensionTest extends TestCase
         $definition = $container->getDefinition(SandBoxService::class);
         $this->assertEquals('%env(bool:default::USE_SANDBOX)%', $definition->getArgument('$useSandbox'));
         $this->assertEquals('%env(string:default::SANDBOX_URL)%', $definition->getArgument('$sandboxUrl'));
+        $this->assertEquals('%env(string:default::SANDBOX_CAFILE)%', $definition->getArgument('$cafile'));
+        $this->assertTrue($definition->getArgument('$verifyPeer'));
     }
 
     public function testNothingIsRegisteredOutsideDev(): void

@@ -41,6 +41,8 @@ class TestHubExtension extends Extension
             ->setArgument('$apiKey', $config['api_key'])
             ->setArgument('$useSandbox', $config['use_sandbox'])
             ->setArgument('$sandboxUrl', $config['sandbox_url'])
+            ->setArgument('$cafile', $config['sandbox_cafile'])
+            ->setArgument('$verifyPeer', $config['sandbox_verify_peer'])
             ->setPublic(true);
 
         $container->register(SandBoxRequestLog::class)

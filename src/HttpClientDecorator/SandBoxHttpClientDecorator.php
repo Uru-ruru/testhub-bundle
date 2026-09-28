@@ -12,6 +12,7 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
 use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
+use TestHub\Bundle\HttpClient\UrlResolver;
 use TestHub\Bundle\Service\SandBoxService;
 
 final class SandBoxHttpClientDecorator implements HttpClientInterface
@@ -50,21 +51,22 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         unset($options['extra'][SandBoxService::SANDBOX_TYPE], $options['extra']['curl'][SandBoxService::SANDBOX_TYPE]);
 
         if (!$this->sandboxService->isEnabledFor($this->requestStack->getMainRequest())) {
-            $response = $this->client->request($method, $url, $options);
-            $this->log($method, $url, $url, $type, null, false, $options, $response);
-
-            return $response;
+            return $this->passThrough($method, $url, $type, $options);
         }
 
-        $context = $this->getCurrentContext();
-        $type ??= $this->getContextType($context);
-        $agent ??= $this->getContextValue($context, 'getAgent');
-        $subagent ??= $this->getContextValue($context, 'getSubAgent');
-
         $originalUrl = $this->resolveOriginalUrl($url, $options);
-        $sandboxUrl = $this->setSandBoxRequestUrl($type, $this->getContextValue($context, 'getAgent'));
-        $options = $this->makeOptions($options, $originalUrl, $type, $agent, $subagent);
-        $options = $this->resetOptions($options);
+        $context = $this->getCurrentContext($originalUrl);
+        $type ??= $this->getContextType($context);
+        $agent = $this->getContextValue($context, 'getAgent');
+
+        // Only provider traffic goes to the sandbox. Anything else (auth, internal services) goes to the real API unchanged.
+        if (null === $type || null === $agent) {
+            return $this->passThrough($method, $url, $type, $options);
+        }
+
+        $subagent = $this->getContextValue($context, 'getSubAgent');
+        $sandboxUrl = $this->sandboxService->getUrl().'/'.$agent.'/'.$type.'/'.$this->getEvent($type);
+        $options = $this->prepareOptions($options, $originalUrl, $type, $agent, $subagent);
 
         $response = $this->client->request($method, $sandboxUrl, $options);
         $this->log($method, $originalUrl, $sandboxUrl, $type, $options['headers'][SandBoxService::EVENT_HEADER], true, $options, $response);
@@ -72,26 +74,46 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         return $response;
     }
 
-    private function setSandBoxRequestUrl(?string $type, ?string $agent): string
+    /**
+     * @param array<mixed> $options
+     *
+     * @throws TransportExceptionInterface
+     */
+    private function passThrough(string $method, string $url, ?string $type, array $options): ResponseInterface
     {
-        if (null === $type || null === $agent) {
-            return $this->sandboxService->getUrlWrap();
-        }
+        $response = $this->client->request($method, $url, $options);
+        $originalUrl = $this->resolveOriginalUrl($url, $options);
+        $this->log($method, $originalUrl, $originalUrl, $type, null, false, $options, $response);
 
-        return $this->sandboxService->getUrl().'/'.$agent.'/'.$type.'/'.$this->getEvent($type);
+        return $response;
     }
 
     /**
      * The provider collects one context per outgoing request, so the last one belongs to the request being sent.
+     * A request without its own context (e.g. an auth call made after a deposit) would still see the previous one,
+     * so a context whose getUrl() points to another host is ignored.
      * Any service with a get(): array method works, so applications can keep their own provider interface.
      */
-    private function getCurrentContext(): ?object
+    private function getCurrentContext(string $url): ?object
     {
         $provider = $this->contextCollector instanceof \Closure ? ($this->contextCollector)() : $this->contextCollector;
         $contexts = $provider->get();
         $context = $contexts ? end($contexts) : null;
 
-        return \is_object($context) ? $context : null;
+        if (!\is_object($context)) {
+            return null;
+        }
+
+        $contextHost = $this->getHost($this->getContextValue($context, 'getUrl'));
+
+        return null === $contextHost || $contextHost === $this->getHost($url) ? $context : null;
+    }
+
+    private function getHost(?string $url): ?string
+    {
+        $host = null !== $url ? parse_url($url, \PHP_URL_HOST) : null;
+
+        return \is_string($host) && '' !== $host ? strtolower($host) : null;
     }
 
     /**
@@ -121,33 +143,38 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         return \is_string($value) && '' !== $value ? $value : null;
     }
 
-    private function makeOptions(array $options, string $url, ?string $type, ?string $agent, ?string $subagent): array
+    /**
+     * Adds the sandbox headers and TLS options, and drops the options that must not reach the transport.
+     *
+     * @param array<mixed> $options
+     *
+     * @return array<mixed>
+     */
+    private function prepareOptions(array $options, string $url, ?string $type, ?string $agent, ?string $subagent): array
     {
         $options['headers'][SandBoxService::URL_HEADER] = $url;
         $options['headers'][SandBoxService::EVENT_HEADER] = $this->getEvent($type);
-        $options['headers'][SandBoxService::AGENT_HEADER] = $agent;
-        $options['headers'][SandBoxService::SUBAGENT_HEADER] = $subagent;
+
+        // A null value would clear a same-named default header of the decorated client, so only known values are sent.
+        foreach ([SandBoxService::AGENT_HEADER => $agent, SandBoxService::SUBAGENT_HEADER => $subagent] as $header => $value) {
+            if (null !== $value) {
+                $options['headers'][$header] = $value;
+            }
+        }
 
         if ('' !== $this->sandboxService->getApiKey()) {
             $options['headers'][SandBoxService::API_KEY_HEADER] = $this->sandboxService->getApiKey();
         }
 
-        return $options;
-    }
-
-    /**
-     * @param array<mixed> $options
-     *
-     * @return array<mixed>
-     */
-    private function resetOptions(array $options): array
-    {
         unset($options[self::PROXY_HEADER], $options['base_uri']);
 
-        return $options;
+        // Only requests rewritten to the sandbox get its TLS options; every other host keeps the normal checks.
+        return $this->sandboxService->getTlsOptions() + $options;
     }
 
     /**
+     * The URL HttpClient will actually call: a leading "/" replaces the base_uri path, "../" climbs out of it.
+     *
      * @param array<mixed> $options
      */
     private function resolveOriginalUrl(string $url, array $options): string
@@ -158,7 +185,7 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
             return $url;
         }
 
-        return rtrim($baseUri, '/').'/'.ltrim($url, '/');
+        return UrlResolver::resolve($baseUri, $url);
     }
 
     private function getEvent(?string $type): string
