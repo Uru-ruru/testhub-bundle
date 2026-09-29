@@ -53,10 +53,10 @@ The type in the sandbox URL is resolved in this order:
        'extra' => [SandBoxService::SANDBOX_TYPE => 'balance'],
    ]);
    ```
-2. The request context's `getDirection()`, then `getOperation()`, when the value is `deposit`, `withdraw` or `withdrawal`. Deposits and withdrawals need no tagging.
+2. The request context's `getDirection()`, then `getOperation()`, when the value is `deposit`, `withdraw`, `withdrawal`, `payments` or `notification`. These types need no tagging.
 3. Otherwise the request is not sent to the sandbox.
 
-The **Deposit event** and **Withdrawal event** selectors apply to `deposit` and to `withdraw`/`withdrawal`. Every other type gets `success`.
+The **Deposit event** selector applies to `deposit`, and the **Withdrawal event** selector to `withdraw`, `withdrawal` and `payments`. Every other type gets `success`.
 
 The key goes directly under `extra`, which HttpClient ignores, so this code also runs in `prod`, where the bundle is not loaded. Use the string `'sandboxRequestType'` if the class is not autoloaded in `prod`, for example because you installed the bundle with `--dev`.
 
@@ -111,7 +111,7 @@ The Test Hub panel shows which provider is in use under **Configuration**. The p
 
 ## Actions
 
-Actions are buttons in the Test Hub panel that run application code, for example processing a test payout that is waiting for the payout cron. Each run is a new request from your browser, so the **Use sandbox** and event controls apply, and the panel links to the run's profile with its HTTP calls.
+Actions are buttons in the Test Hub panel that run application code, for example processing a test payout that is waiting for the payout cron. The bundle ships one, [Run payout](#run-payout), and you can add your own. Each run is a new request from your browser, so the **Use sandbox** and event controls apply, and the panel links to the run's profile with its HTTP calls.
 
 Import the bundle routes for `dev`:
 
@@ -122,6 +122,8 @@ test_hub:
     prefix: /_test_hub
 ```
 
+### Your own actions
+
 Implement `ActionInterface`. With autoconfiguration on, the action appears in the panel:
 
 ```php
@@ -129,27 +131,92 @@ namespace App\Sandbox;
 
 use TestHub\Bundle\Action\ActionInterface;
 
-final class PayoutAction implements ActionInterface
+final class CheckStatusAction implements ActionInterface
 {
-    public function getName(): string { return 'payout'; }
-    public function getLabel(): string { return 'Run payout'; }
-    public function getDescription(): string { return 'Processes approved withdrawals of a gateway.'; }
+    public function getName(): string { return 'check_status'; }
+    public function getLabel(): string { return 'Check status'; }
+    public function getDescription(): string { return 'Asks the provider for the status of an order.'; }
 
     /** Form fields, as name => label. */
     public function getParameters(): array
     {
-        return ['provider' => 'Provider', 'gateway' => 'Gateway'];
+        return ['order_id' => 'Order ID'];
     }
 
     public function run(array $parameters): string
     {
         // ...
-        return 'Payout finished.';
+        return 'Status checked.';
     }
 }
 ```
 
 `run()` gets the submitted fields as trimmed strings. Its return value is shown in the panel; an exception is shown as a failure. Anything the action prints is captured and shown too. The panel remembers the last values in this browser.
+
+`getName()` must be unique and may contain only letters, digits, `_` and `-`. `payout` is taken by the built-in action.
+
+### Run payout
+
+The built-in **Run payout** action processes a gateway's approved withdrawals the same way the payout cron does, so you don't have to wait for the cron after creating a test withdrawal. Only orders that already passed security are picked up.
+
+| Field | Required | Passed to the runner as |
+|---|---|---|
+| Provider (integration code) | yes | `$provider` |
+| Gateway code | no | `$gateway`, `""` when empty |
+| Partner ref_id | no | `$refId`, `0` when empty |
+
+The payout itself is done by a `PayoutRunnerInterface`. In the 1xpay project (where `Xpay\Lib\Systems\PaySystems` exists) the bundle uses its built-in `PaySystemsPayoutRunner`, which runs `Gateway::payout()` like the payout cron, so there is nothing to set up:
+
+```php
+PaySystems::reset();
+
+$system = PaySystems::initSystem($provider, $gateway, config: new PaySystemConfiguration(PaySystems::TYPE_OP_PAYMENTS));
+$system->ref_id = $refId;
+$system->direction = PaySystems::DIRECTION_WITHDRAW;
+$system->payout();
+```
+
+In any other application, or to change how the 1xpay payout runs, implement the interface yourself:
+
+```php
+namespace App\Development\TestHub;
+
+use TestHub\Bundle\Action\PayoutRunnerInterface;
+
+final class PayoutRunner implements PayoutRunnerInterface
+{
+    public function payout(string $provider, string $gateway, int $refId): void
+    {
+        // Start the payout for the gateway, as the payout cron does.
+        // Throw an exception to show the run as failed.
+    }
+}
+```
+
+The runner is chosen in this order:
+
+1. your own alias for `PayoutRunnerInterface` in `services.yaml`
+2. your only autoconfigured implementation. If there are several, the container fails to build and asks you to alias one.
+3. the built-in `PaySystemsPayoutRunner`, when `Xpay\Lib\Systems\PaySystems` exists
+4. none: the **Run payout** button is not shown
+
+On success the panel shows `Payout finished for {provider} ({gateway}). See the payout log for processed orders.` An empty provider fails without calling the runner.
+
+Like any action, the run is a request from your browser. With **Use sandbox** on, the provider calls made during the payout go to the sandbox, and a context with the `withdraw` direction gets its answer from the **Withdrawal event** selector. Open the run's profile from the panel to see those calls.
+
+Because your own runner implements a bundle interface, it can load only where the bundle is installed. If the bundle is a `--dev` dependency, register the runner in `dev` only, for example from a directory that `services.yaml` excludes:
+
+```yaml
+# config/packages/development.yaml
+when@dev:
+    services:
+        _defaults:
+            autowire: true
+            autoconfigure: true
+
+        App\Development\:
+            resource: '../../src/Development/'
+```
 
 ## Configuration
 

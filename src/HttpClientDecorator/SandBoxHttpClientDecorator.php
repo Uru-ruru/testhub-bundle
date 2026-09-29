@@ -23,20 +23,23 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
     private const string DEPOSIT_TYPE = 'deposit';
     private const string WITHDRAW_TYPE = 'withdraw';
     private const string WITHDRAWAL_TYPE = 'withdrawal';
+    private const string PAYMENTS_TYPE = 'payments';
+    private const string NOTIFICATION_TYPE = 'notification';
 
     /**
      * Types read from the request context. Anything else (e.g. "balance") must be passed in extra.sandboxRequestType.
      */
-    private const array BASE_TYPES = [self::DEPOSIT_TYPE, self::WITHDRAW_TYPE, self::WITHDRAWAL_TYPE];
+    private const array BASE_TYPES = [self::DEPOSIT_TYPE, self::WITHDRAW_TYPE, self::WITHDRAWAL_TYPE, self::PAYMENTS_TYPE, self::NOTIFICATION_TYPE];
 
     public function __construct(
-        private HttpClientInterface $client,
+        private HttpClientInterface         $client,
         /** @var ContextProviderInterface|\Closure(): object any service with a get(): array method */
-        private readonly object $contextCollector,
-        private readonly SandBoxService $sandboxService,
-        private readonly RequestStack $requestStack,
+        private readonly object             $contextCollector,
+        private readonly SandBoxService     $sandboxService,
+        private readonly RequestStack       $requestStack,
         private readonly ?SandBoxRequestLog $log = null,
-    ) {
+    )
+    {
     }
 
     /**
@@ -65,7 +68,7 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
         }
 
         $subagent = $this->getContextValue($context, 'getSubAgent');
-        $sandboxUrl = $this->sandboxService->getUrl().'/'.$agent.'/'.$type.'/'.$this->getEvent($type);
+        $sandboxUrl = $this->sandboxService->getUrl() . '/' . $agent . '/' . $type . '/' . $this->getEvent($type);
         $options = $this->prepareOptions($options, $originalUrl, $type, $agent, $subagent);
 
         $response = $this->client->request($method, $sandboxUrl, $options);
@@ -195,6 +198,7 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
             SandBoxDataCollector::DEPOSIT_EVENT => SandBoxDataCollector::DEPOSIT_EVENT,
             self::WITHDRAW_TYPE,
             self::WITHDRAWAL_TYPE,
+            self::PAYMENTS_TYPE,
             SandBoxDataCollector::WITHDRAWAL_EVENT => SandBoxDataCollector::WITHDRAWAL_EVENT,
             default => null,
         };

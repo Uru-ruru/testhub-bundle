@@ -12,9 +12,13 @@ use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
 use TestHub\Bundle\Action\ActionInterface;
 use TestHub\Bundle\Action\ActionRegistry;
+use TestHub\Bundle\Action\PayoutAction;
+use TestHub\Bundle\Action\PayoutRunnerInterface;
+use TestHub\Bundle\Action\PaySystemsPayoutRunner;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
 use TestHub\Bundle\Controller\ActionController;
 use TestHub\Bundle\DependencyInjection\Compiler\ContextProviderPass;
+use TestHub\Bundle\DependencyInjection\Compiler\PayoutRunnerPass;
 use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 use TestHub\Bundle\HttpClient\State\DefaultContextProvider;
@@ -50,6 +54,19 @@ class TestHubExtension extends Extension
 
         $container->registerForAutoconfiguration(ActionInterface::class)
             ->addTag(self::ACTION_TAG);
+
+        // Removed by PayoutRunnerPass when there is no PayoutRunnerInterface to run it.
+        $container->registerForAutoconfiguration(PayoutRunnerInterface::class)
+            ->addTag(PayoutRunnerPass::TAG);
+
+        $container->register(PayoutAction::class)
+            ->setArguments([new Reference(PayoutRunnerInterface::class)])
+            ->addTag(self::ACTION_TAG);
+
+        // Fallback runner for the 1xpay payment systems, used by PayoutRunnerPass when the application has none.
+        if (class_exists('Xpay\\Lib\\Systems\\PaySystems')) {
+            $container->register(PaySystemsPayoutRunner::class);
+        }
 
         $container->register(ActionRegistry::class)
             ->setArguments([new TaggedIteratorArgument(self::ACTION_TAG)]);
