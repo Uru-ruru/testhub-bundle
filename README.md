@@ -165,18 +165,9 @@ The built-in **Run payout** action processes a gateway's approved withdrawals th
 | Gateway code | no | `$gateway`, `""` when empty |
 | Partner ref_id | no | `$refId`, `0` when empty |
 
-The payout itself is done by a `PayoutRunnerInterface`. In the 1xpay project (where `Xpay\Lib\Systems\PaySystems` exists) the bundle uses its built-in `PaySystemsPayoutRunner`, which runs `Gateway::payout()` like the payout cron, so there is nothing to set up:
+The payout itself is done by a `PayoutRunnerInterface`. In the project (where `PaySystems` exists) the bundle uses its built-in `PaySystemsPayoutRunner`, which runs `Gateway::payout()` like the payout cron, so there is nothing to set up.
 
-```php
-PaySystems::reset();
-
-$system = PaySystems::initSystem($provider, $gateway, config: new PaySystemConfiguration(PaySystems::TYPE_OP_PAYMENTS));
-$system->ref_id = $refId;
-$system->direction = PaySystems::DIRECTION_WITHDRAW;
-$system->payout();
-```
-
-In any other application, or to change how the 1xpay payout runs, implement the interface yourself:
+In any other application, or to change how the payout runs, implement the interface yourself:
 
 ```php
 namespace App\Development\TestHub;
@@ -197,7 +188,7 @@ The runner is chosen in this order:
 
 1. your own alias for `PayoutRunnerInterface` in `services.yaml`
 2. your only autoconfigured implementation. If there are several, the container fails to build and asks you to alias one.
-3. the built-in `PaySystemsPayoutRunner`, when `Xpay\Lib\Systems\PaySystems` exists
+3. the built-in `PaySystemsPayoutRunner`, when `\PaySystems` exists
 4. none: the **Run payout** button is not shown
 
 On success the panel shows `Payout finished for {provider} ({gateway}). See the payout log for processed orders.` An empty provider fails without calling the runner.
