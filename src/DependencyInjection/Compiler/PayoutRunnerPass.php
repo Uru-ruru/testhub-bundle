@@ -9,10 +9,14 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\LogicException;
 use TestHub\Bundle\Action\PayoutAction;
 use TestHub\Bundle\Action\PayoutRunnerInterface;
+use TestHub\Bundle\Action\PaySystemsPayoutRunner;
 
 /**
- * Wires PayoutAction to the application's PayoutRunnerInterface: an alias defined by the application,
- * or its only autoconfigured implementation. Without one, PayoutAction is removed.
+ * Wires PayoutAction to a PayoutRunnerInterface, in this order:
+ *  1. an alias defined by the application;
+ *  2. the application's only autoconfigured implementation;
+ *  3. the built-in PaySystemsPayoutRunner, registered when the 1xpay payment systems exist.
+ * Without any of them, PayoutAction is removed.
  */
 final class PayoutRunnerPass implements CompilerPassInterface
 {
@@ -31,6 +35,10 @@ final class PayoutRunnerPass implements CompilerPassInterface
 
         if (\count($candidates) > 1) {
             throw new LogicException(\sprintf('Several services implement "%s" (%s). Choose one by aliasing the interface.', PayoutRunnerInterface::class, implode(', ', $candidates)));
+        }
+
+        if (!$candidates && $container->hasDefinition(PaySystemsPayoutRunner::class)) {
+            $candidates = [PaySystemsPayoutRunner::class];
         }
 
         if (!$candidates) {

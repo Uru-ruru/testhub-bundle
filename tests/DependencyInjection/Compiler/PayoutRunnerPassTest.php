@@ -10,6 +10,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\LogicException;
 use TestHub\Bundle\Action\PayoutAction;
 use TestHub\Bundle\Action\PayoutRunnerInterface;
+use TestHub\Bundle\Action\PaySystemsPayoutRunner;
 use TestHub\Bundle\DependencyInjection\Compiler\PayoutRunnerPass;
 use TestHub\Bundle\DependencyInjection\TestHubExtension;
 use TestHub\Bundle\Tests\Fixtures\RecordingPayoutRunner;
@@ -42,6 +43,27 @@ class PayoutRunnerPassTest extends TestCase
         });
 
         $this->assertSame('app.other_runner', (string) $container->getAlias(PayoutRunnerInterface::class));
+    }
+
+    public function testFallsBackToPaySystemsRunner(): void
+    {
+        $container = $this->process(static function (ContainerBuilder $container): void {
+            // Registered by the extension when Xpay\Lib\Systems\PaySystems exists.
+            $container->register(PaySystemsPayoutRunner::class);
+        });
+
+        $this->assertTrue($container->hasDefinition(PayoutAction::class));
+        $this->assertSame(PaySystemsPayoutRunner::class, (string) $container->getAlias(PayoutRunnerInterface::class));
+    }
+
+    public function testApplicationRunnerWinsOverPaySystemsRunner(): void
+    {
+        $container = $this->process(static function (ContainerBuilder $container): void {
+            $container->register(PaySystemsPayoutRunner::class);
+            $container->register('app.payout_runner', RecordingPayoutRunner::class)->setAutoconfigured(true);
+        });
+
+        $this->assertSame('app.payout_runner', (string) $container->getAlias(PayoutRunnerInterface::class));
     }
 
     public function testSeveralRunnersAreAmbiguous(): void
