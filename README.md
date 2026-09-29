@@ -151,6 +151,26 @@ final class PayoutAction implements ActionInterface
 
 `run()` gets the submitted fields as trimmed strings. Its return value is shown in the panel; an exception is shown as a failure. Anything the action prints is captured and shown too. The panel remembers the last values in this browser.
 
+### Payout
+
+The bundle ships a **Run payout** action that processes a gateway's approved withdrawals, like the payout cron. It asks for a provider, and optionally a gateway and a partner `ref_id`. The processing itself is application code, so implement `PayoutRunnerInterface`:
+
+```php
+namespace App\Sandbox;
+
+use TestHub\Bundle\Action\PayoutRunnerInterface;
+
+final class PayoutRunner implements PayoutRunnerInterface
+{
+    public function payout(string $provider, string $gateway, int $refId): void
+    {
+        // Run the payout for the gateway, as the payout cron does.
+    }
+}
+```
+
+With autoconfiguration on, the only implementation is picked up. If there are several, alias `PayoutRunnerInterface` to the one to use. Without an implementation, the button is not shown.
+
 ## Configuration
 
 ```yaml

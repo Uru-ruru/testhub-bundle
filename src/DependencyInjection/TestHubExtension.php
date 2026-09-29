@@ -12,9 +12,12 @@ use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
 use TestHub\Bundle\Action\ActionInterface;
 use TestHub\Bundle\Action\ActionRegistry;
+use TestHub\Bundle\Action\PayoutAction;
+use TestHub\Bundle\Action\PayoutRunnerInterface;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
 use TestHub\Bundle\Controller\ActionController;
 use TestHub\Bundle\DependencyInjection\Compiler\ContextProviderPass;
+use TestHub\Bundle\DependencyInjection\Compiler\PayoutRunnerPass;
 use TestHub\Bundle\HttpClient\SandBoxRequestLog;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 use TestHub\Bundle\HttpClient\State\DefaultContextProvider;
@@ -49,6 +52,14 @@ class TestHubExtension extends Extension
             ->addTag('kernel.reset', ['method' => 'reset']);
 
         $container->registerForAutoconfiguration(ActionInterface::class)
+            ->addTag(self::ACTION_TAG);
+
+        // Removed by PayoutRunnerPass when the application has no PayoutRunnerInterface.
+        $container->registerForAutoconfiguration(PayoutRunnerInterface::class)
+            ->addTag(PayoutRunnerPass::TAG);
+
+        $container->register(PayoutAction::class)
+            ->setArguments([new Reference(PayoutRunnerInterface::class)])
             ->addTag(self::ACTION_TAG);
 
         $container->register(ActionRegistry::class)
