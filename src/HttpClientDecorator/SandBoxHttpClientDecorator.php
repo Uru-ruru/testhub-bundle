@@ -23,11 +23,12 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
     private const string DEPOSIT_TYPE = 'deposit';
     private const string WITHDRAW_TYPE = 'withdraw';
     private const string WITHDRAWAL_TYPE = 'withdrawal';
+    private const string NOTIFICATION_TYPE = 'notification';
 
     /**
      * Types read from the request context. Anything else (e.g. "balance") must be passed in extra.sandboxRequestType.
      */
-    private const array BASE_TYPES = [self::DEPOSIT_TYPE, self::WITHDRAW_TYPE, self::WITHDRAWAL_TYPE];
+    private const array BASE_TYPES = [self::DEPOSIT_TYPE, self::WITHDRAW_TYPE, self::WITHDRAWAL_TYPE, self::NOTIFICATION_TYPE];
 
     public function __construct(
         private HttpClientInterface $client,
