@@ -1,0 +1,3 @@
+  * <fg=blue>Next step</>
+    Run <comment>php bin/console test-hub:install</> to choose the context provider
+    and write the sandbox URL and API key to <comment>.env.local</>.

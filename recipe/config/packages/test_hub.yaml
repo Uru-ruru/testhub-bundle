@@ -1,0 +1,8 @@
+when@dev:
+    test_hub:
+        sandbox_url: '%env(string:default::SANDBOX_URL)%'
+        use_sandbox: '%env(bool:default::USE_SANDBOX)%'
+        api_key: '%env(string:default::SANDBOX_API_KEY)%'
+        # Service ID or class giving the agent context. Leave it commented out to detect your
+        # ContextProviderInterface implementation; "bin/console test-hub:install" sets it.
+        # context_provider: ~
