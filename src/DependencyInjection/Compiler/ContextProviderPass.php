@@ -8,6 +8,7 @@ use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\LogicException;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
+use TestHub\Bundle\Command\InstallCommand;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 use TestHub\Bundle\HttpClient\State\DefaultContextProvider;
 
@@ -52,6 +53,69 @@ final class ContextProviderPass implements CompilerPassInterface
         if ($container->hasDefinition(SandBoxDataCollector::class)) {
             $container->getDefinition(SandBoxDataCollector::class)->replaceArgument(2, $currentId);
         }
+
+        if ($container->hasDefinition(InstallCommand::class)) {
+            $container->getDefinition(InstallCommand::class)
+                ->replaceArgument(1, $currentId)
+                ->replaceArgument(3, $this->findCandidates($container));
+        }
+    }
+
+    /**
+     * Application services that can be the provider, for test-hub:install: those implementing
+     * ContextProviderInterface or with a public get(): array method. Vendor and bundle classes are left out.
+     *
+     * @return list<string>
+     */
+    private function findCandidates(ContainerBuilder $container): array
+    {
+        $excludedDirs = [\dirname(__DIR__, 2).\DIRECTORY_SEPARATOR, \DIRECTORY_SEPARATOR.'vendor'.\DIRECTORY_SEPARATOR];
+        $candidates = [];
+
+        foreach ($container->getDefinitions() as $id => $definition) {
+            if (str_starts_with($id, '.') || $definition->isAbstract() || $definition->isSynthetic()) {
+                continue;
+            }
+
+            $class = $container->getParameterBag()->resolveValue($definition->getClass() ?? $id);
+            $reflection = \is_string($class) ? $container->getReflectionClass($class, false) : null;
+            $file = $reflection?->getFileName();
+            if (!$reflection || !\is_string($file) || !$this->isProvider($reflection)) {
+                continue;
+            }
+
+            foreach ($excludedDirs as $dir) {
+                if (str_contains($file, $dir)) {
+                    continue 2;
+                }
+            }
+
+            $candidates[] = $id;
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * @param \ReflectionClass<object> $class
+     */
+    private function isProvider(\ReflectionClass $class): bool
+    {
+        if ($class->isInterface() || $class->isAbstract()) {
+            return false;
+        }
+        if ($class->implementsInterface(ContextProviderInterface::class)) {
+            return true;
+        }
+        if (!$class->hasMethod('get')) {
+            return false;
+        }
+
+        $method = $class->getMethod('get');
+        $type = $method->getReturnType();
+
+        return $method->isPublic() && !$method->isStatic() && 0 === $method->getNumberOfRequiredParameters()
+            && $type instanceof \ReflectionNamedType && 'array' === $type->getName();
     }
 
     /**

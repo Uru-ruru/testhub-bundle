@@ -1,0 +1,14 @@
+{
+    "bundles": {
+        "TestHub\\Bundle\\TestHubBundle": ["dev"]
+    },
+    "copy-from-recipe": {
+        "config/": "%CONFIG_DIR%/"
+    },
+    "env": {
+        "#1": "TestHub sandbox. Put the real values in .env.local; the sandbox stays off while SANDBOX_URL is empty.",
+        "SANDBOX_URL": "",
+        "SANDBOX_API_KEY": "",
+        "USE_SANDBOX": "false"
+    }
+}

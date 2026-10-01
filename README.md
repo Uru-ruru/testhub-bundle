@@ -6,9 +6,10 @@ Routes your application's outgoing `HttpClient` traffic to a TestHub sandbox, sw
 
 ```bash
 composer require --dev uru/testhub-bundle
+php bin/console test-hub:install
 ```
 
-Register the bundle for `dev` only in `config/bundles.php`:
+With the Symfony Flex recipe (see [Flex recipe](#flex-recipe)), `composer require` registers the bundle for `dev` in `config/bundles.php`, creates `config/packages/test_hub.yaml` and `config/routes/test_hub.yaml`, and adds `SANDBOX_URL`, `SANDBOX_API_KEY` and `USE_SANDBOX` to `.env`. Without the recipe, Flex only registers the bundle. If it is missing from `config/bundles.php`, add it for `dev` only:
 
 ```php
 return [
@@ -17,7 +18,21 @@ return [
 ];
 ```
 
-Set the sandbox in `.env.local`:
+`test-hub:install` does the rest:
+
+- creates the two config files if they are missing, and leaves existing ones as they are
+- lists your services that implement `ContextProviderInterface` or have a public `get(): array` method, and writes your choice to `context_provider` in `config/packages/test_hub.yaml`. Choose **Detect automatically** to leave the line commented out (see [Agent context](#agent-context))
+- asks for the sandbox URL and API key and writes them to `.env.local`
+
+To run it without questions, for example in a setup script:
+
+```bash
+php bin/console test-hub:install -n --context-provider='App\Sandbox\CurrentAgentProvider' --sandbox-url=https://sandbox.example.com --api-key=your-key
+```
+
+`--context-provider=auto` comments the line out again. Options you leave out change nothing.
+
+You can also set the sandbox in `.env.local` yourself:
 
 ```dotenv
 SANDBOX_URL=https://sandbox.example.com
@@ -98,10 +113,13 @@ The implementation is chosen in this order:
 If the bundle is installed with `--dev`, an application class that must also load in `prod` cannot implement `TestHub\Bundle\...\ContextProviderInterface`. Keep your own interface and point the bundle at the service. Any service with a public `get(): array` method works:
 
 ```yaml
-# config/packages/dev/test_hub.yaml
-test_hub:
-    context_provider: App\HttpClient\State\ContextCollector
+# config/packages/test_hub.yaml
+when@dev:
+    test_hub:
+        context_provider: App\HttpClient\State\ContextCollector
 ```
+
+`test-hub:install` lists such services too.
 
 The context must be collected before the sandbox decorator runs. The decorator sits on `http_client.transport` with priority `100`, so a collecting decorator with a lower `decoration_priority` (for example `-20`) runs first.
 
@@ -111,13 +129,14 @@ The Test Hub panel shows which provider is in use under **Configuration**. The p
 
 Actions are buttons in the Test Hub panel that run application code, for example processing a test payout that is waiting for the payout cron. Each run is a new request from your browser, so the **Use sandbox** and event controls apply, and the panel links to the run's profile with its HTTP calls.
 
-Import the bundle routes for `dev`:
+The bundle routes are imported for `dev` by `config/routes/test_hub.yaml`, which the recipe or `test-hub:install` creates:
 
 ```yaml
-# config/routes/dev/test_hub.yaml
-test_hub:
-    resource: '@TestHubBundle/config/routes.php'
-    prefix: /_test_hub
+# config/routes/test_hub.yaml
+when@dev:
+    test_hub:
+        resource: '@TestHubBundle/config/routes.php'
+        prefix: /_test_hub
 ```
 
 Implement `ActionInterface`. With autoconfiguration on, the action appears in the panel:
@@ -152,16 +171,26 @@ final class PayoutAction implements ActionInterface
 ## Configuration
 
 ```yaml
-# config/packages/dev/test_hub.yaml
-test_hub:
-    environments: ['dev']
-    sandbox_url: '%env(string:default::SANDBOX_URL)%'
-    use_sandbox: '%env(bool:default::USE_SANDBOX)%'
-    api_key: '%env(string:default::SANDBOX_API_KEY)%'
-    # context_provider: App\Sandbox\CurrentAgentProvider  # only needed to override detection
+# config/packages/test_hub.yaml
+when@dev:
+    test_hub:
+        environments: ['dev']
+        sandbox_url: '%env(string:default::SANDBOX_URL)%'
+        use_sandbox: '%env(bool:default::USE_SANDBOX)%'
+        api_key: '%env(string:default::SANDBOX_API_KEY)%'
+        # context_provider: App\Sandbox\CurrentAgentProvider  # only needed to override detection
 ```
 
 Until `sandbox_url` is set, the sandbox stays off, whatever the switch says.
+
+## Flex recipe
+
+`recipe/` holds the Symfony Flex recipe. Composer never runs files from a dependency, so Flex only applies a recipe that it finds in a recipe repository:
+
+- **Public:** open a pull request to [symfony/recipes-contrib](https://github.com/symfony/recipes-contrib) that copies `recipe/` to `uru/testhub-bundle/1.0/`. The package must be on Packagist. The first time an application installs a contrib recipe, Flex asks to allow contrib recipes.
+- **Private:** publish the recipe in your own Flex endpoint and add it to the application's `composer.json` under `extra.symfony.endpoint`, before the `flex://defaults` entry.
+
+`test-hub:install` copies its config files from `recipe/config/`, so keep both in sync by editing only `recipe/`.
 
 ## Testing
 

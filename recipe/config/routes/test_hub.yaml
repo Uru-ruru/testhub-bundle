@@ -1,0 +1,4 @@
+when@dev:
+    test_hub:
+        resource: '@TestHubBundle/config/routes.php'
+        prefix: /_test_hub

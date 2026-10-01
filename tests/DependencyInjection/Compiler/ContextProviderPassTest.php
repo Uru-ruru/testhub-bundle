@@ -9,6 +9,7 @@ use Symfony\Component\DependencyInjection\Compiler\ResolveInstanceofConditionals
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\LogicException;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
+use TestHub\Bundle\Command\InstallCommand;
 use TestHub\Bundle\DependencyInjection\Compiler\ContextProviderPass;
 use TestHub\Bundle\DependencyInjection\TestHubExtension;
 use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
@@ -84,6 +85,19 @@ class ContextProviderPassTest extends TestCase
             $container->register('app.first_provider', AgentContextProvider::class)->setAutoconfigured(true);
             $container->register('app.second_provider', AgentContextProvider::class)->setAutoconfigured(true);
         });
+    }
+
+    public function testInstallCommandGetsProviderAndCandidates(): void
+    {
+        $container = $this->process(static function (ContainerBuilder $container): void {
+            $container->register('app.context_provider', AgentContextProvider::class)->setAutoconfigured(true);
+            $container->register(AppContextCollector::class);
+            $container->register('app.not_a_provider', \stdClass::class);
+        });
+
+        $command = $container->getDefinition(InstallCommand::class);
+        $this->assertSame('app.context_provider', $command->getArgument(1));
+        $this->assertSame(['app.context_provider', AppContextCollector::class], $command->getArgument(3));
     }
 
     /**

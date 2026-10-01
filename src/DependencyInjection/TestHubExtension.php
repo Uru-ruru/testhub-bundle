@@ -13,6 +13,7 @@ use Symfony\Component\DependencyInjection\Reference;
 use TestHub\Bundle\Action\ActionInterface;
 use TestHub\Bundle\Action\ActionRegistry;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
+use TestHub\Bundle\Command\InstallCommand;
 use TestHub\Bundle\Controller\ActionController;
 use TestHub\Bundle\DependencyInjection\Compiler\ContextProviderPass;
 use TestHub\Bundle\HttpClient\SandBoxRequestLog;
@@ -91,6 +92,11 @@ class TestHubExtension extends Extension
         }
 
         $container->setAlias(ContextProviderInterface::class, $contextProviderId);
+
+        // ContextProviderPass sets the resolved provider and the candidates.
+        $container->register(InstallCommand::class)
+            ->setArguments(['%kernel.project_dir%', $contextProviderId, $config['context_provider'], []])
+            ->addTag('console.command', ['command' => InstallCommand::NAME, 'description' => InstallCommand::DESCRIPTION]);
 
         $container->register(SandBoxHttpClientDecorator::class)
             ->setDecoratedService('http_client.transport', null, 100)
