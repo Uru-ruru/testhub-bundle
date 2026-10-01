@@ -23,10 +23,15 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
 
     public const string EVENT_SUCCESS = 'success';
     public const string EVENT_FAIL = 'fail';
+    public const string EVENT_ERROR = 'error';
+    public const string EVENT_PENDING = 'pending';
 
-    private const array EVENT_VARIANTS = [
+    /** The sandbox's RequestEvent values. */
+    public const array EVENT_VARIANTS = [
         self::EVENT_SUCCESS,
         self::EVENT_FAIL,
+        self::EVENT_ERROR,
+        self::EVENT_PENDING,
     ];
 
     private const int MAX_BODY_LENGTH = 65536;
@@ -158,6 +163,14 @@ class SandBoxDataCollector extends AbstractDataCollector implements LateDataColl
     public function getWithdrawalEvent(): ?string
     {
         return $this->data[self::WITHDRAWAL_EVENT];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getEventVariants(): array
+    {
+        return self::EVENT_VARIANTS;
     }
 
     /**

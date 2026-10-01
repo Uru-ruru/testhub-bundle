@@ -3,6 +3,8 @@ when@dev:
         sandbox_url: '%env(string:default::SANDBOX_URL)%'
         use_sandbox: '%env(bool:default::USE_SANDBOX)%'
         api_key: '%env(string:default::SANDBOX_API_KEY)%'
+        # Set to true to verify the sandbox TLS certificate; "bin/console test-hub:install" asks for it.
+        sandbox_verify_peer: false
         # Service ID or class giving the agent context. Leave it commented out to detect your
         # ContextProviderInterface implementation; "bin/console test-hub:install" sets it.
         # context_provider: ~

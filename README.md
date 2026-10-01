@@ -23,6 +23,8 @@ return [
 - creates the two config files if they are missing, and leaves existing ones as they are
 - lists your services that implement `ContextProviderInterface` or have a public `get(): array` method, and writes your choice to `context_provider` in `config/packages/test_hub.yaml`. Choose **Detect automatically** to leave the line commented out (see [Agent context](#agent-context))
 - asks for the sandbox URL and API key and writes them to `.env.local`
+- writes `USE_SANDBOX=1` to `.env.local` unless `USE_SANDBOX` is set there already, so the sandbox is on until you switch it off in the profiler. `--use-sandbox=0` writes another value
+- asks whether to verify the sandbox TLS certificate and writes the answer to `sandbox_verify_peer` in `config/packages/test_hub.yaml`. The answer defaults to no, so a self-signed sandbox certificate works; `--sandbox-verify-peer=1` turns verification on without asking
 
 To run it without questions, for example in a setup script:
 
@@ -41,6 +43,25 @@ SANDBOX_API_KEY=your-key
 USE_SANDBOX=false
 ```
 
+### Docker
+
+If the sandbox runs on your machine and the application runs in Docker Compose, the container must resolve the sandbox host to the host machine. `test-hub:docker-host` adds it to `extra_hosts` of the service you choose:
+
+```bash
+php bin/console test-hub:docker-host            # asks which service
+php bin/console test-hub:docker-host php        # result:
+```
+
+```yaml
+services:
+    php:
+        # ...
+        extra_hosts:
+            - "sandbox.lan:host-gateway"
+```
+
+It reads `compose.yaml`, `docker-compose.yml` and their `.override` files in the project directory; pass another file with `--file=docker/compose.yaml`. `--host` (default `sandbox.lan`) and `--ip` (default `host-gateway`) change the entry. The file is edited as text, so comments and formatting stay. Existing `extra_hosts` lists and maps are appended to, and a service that already has the host is left as it is. Recreate the container afterwards: `docker compose up -d php`.
+
 The bundle also checks the kernel environment: in any environment not listed in `test_hub.environments` (default `['dev']`) it registers nothing, even if it is enabled in `bundles.php`.
 
 ## Usage
@@ -54,7 +75,7 @@ The bundle also checks the kernel environment: in any environment not listed in 
    The original URL is sent in the `sandbox-url` header, the event in the `sandbox-event` header and `SANDBOX_API_KEY` in the `sandbox-api-key` header. The API key is sent only to the sandbox, never to real APIs, and is left out when it is empty.
 4. The panel lists each outgoing request: original URL, sandbox URL, type/event, status, timing, request options, response headers and the sandbox response body.
 
-**Deposit event** and **Withdrawal event** select whether the sandbox answers `success` or `fail`.
+**Deposit event** and **Withdrawal event** select the event the sandbox answers with: `success`, `fail`, `error` or `pending`. Unset, it answers `success`.
 
 ### Request type
 
@@ -239,8 +260,8 @@ when@dev:
         use_sandbox: '%env(bool:default::USE_SANDBOX)%'
         api_key: '%env(string:default::SANDBOX_API_KEY)%'
         sandbox_cafile: '%env(string:default::SANDBOX_CAFILE)%'
-    sandbox_verify_peer: true
-    # context_provider: App\Sandbox\CurrentAgentProvider  # only needed to override detection
+        sandbox_verify_peer: false  # the recipe's value; without the line, the sandbox certificate is verified
+        # context_provider: App\Sandbox\CurrentAgentProvider  # only needed to override detection
 ```
 
 Until `sandbox_url` is set, the sandbox stays off, whatever the switch says.

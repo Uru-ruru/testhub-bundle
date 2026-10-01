@@ -6,6 +6,7 @@ namespace TestHub\Bundle\Command;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\InvalidOptionException;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -14,7 +15,8 @@ use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 
 /**
  * Sets the bundle up in the application: copies the recipe's config files when they are missing,
- * writes the chosen context provider to config/packages/test_hub.yaml and the sandbox to .env.local.
+ * writes the chosen context provider and sandbox_verify_peer to config/packages/test_hub.yaml and the sandbox to .env.local.
+ * USE_SANDBOX=1 is written to .env.local unless it is set there already.
  */
 #[AsCommand(name: self::NAME, description: self::DESCRIPTION)]
 final class InstallCommand extends Command
@@ -27,7 +29,6 @@ final class InstallCommand extends Command
     private const string PACKAGE_CONFIG = 'config/packages/test_hub.yaml';
     private const string ROUTES_CONFIG = 'config/routes/test_hub.yaml';
     private const string ENV_FILE = '.env.local';
-    private const string CONTEXT_PROVIDER_LINE = '/^([ \t]*)#?[ \t]*context_provider:.*$/m';
 
     /**
      * @param string       $currentProvider    the provider the container uses now
@@ -48,7 +49,9 @@ final class InstallCommand extends Command
         $this
             ->addOption('context-provider', null, InputOption::VALUE_REQUIRED, \sprintf('Service ID or class of the context provider, or "%s" to detect it', self::AUTO))
             ->addOption('sandbox-url', null, InputOption::VALUE_REQUIRED, 'Sandbox URL, written to .env.local as SANDBOX_URL')
-            ->addOption('api-key', null, InputOption::VALUE_REQUIRED, 'Sandbox API key, written to .env.local as SANDBOX_API_KEY');
+            ->addOption('api-key', null, InputOption::VALUE_REQUIRED, 'Sandbox API key, written to .env.local as SANDBOX_API_KEY')
+            ->addOption('use-sandbox', null, InputOption::VALUE_REQUIRED, 'Default sandbox state, written to .env.local as USE_SANDBOX. Default: 1 unless it is set there already')
+            ->addOption('sandbox-verify-peer', null, InputOption::VALUE_REQUIRED, 'Whether to verify the sandbox TLS certificate (1 or 0), written to test_hub.yaml as sandbox_verify_peer. Default: 0');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -61,13 +64,21 @@ final class InstallCommand extends Command
 
         $provider = $this->chooseProvider($input, $io);
         if (null !== $provider) {
-            $this->writeProvider($provider, $io);
+            $this->writeConfig('context_provider', self::AUTO === $provider
+                ? '# context_provider: ~'
+                : \sprintf("context_provider: '%s'", str_replace("'", "''", $provider)), $io);
         }
 
         $this->writeEnv([
             'SANDBOX_URL' => $this->askValue($input, $io, 'sandbox-url', 'Sandbox URL', 'SANDBOX_URL'),
             'SANDBOX_API_KEY' => $this->askValue($input, $io, 'api-key', 'Sandbox API key', 'SANDBOX_API_KEY'),
+            'USE_SANDBOX' => $input->getOption('use-sandbox') ?? ($this->hasEnv('USE_SANDBOX') ? null : '1'),
         ], $io);
+
+        $verifyPeer = $this->chooseVerifyPeer($input, $io);
+        if (null !== $verifyPeer) {
+            $this->writeConfig('sandbox_verify_peer', 'sandbox_verify_peer: '.($verifyPeer ? 'true' : 'false'), $io);
+        }
 
         $io->success('Test Hub is installed. Open any page and click "Test Hub" in the debug toolbar.');
 
@@ -127,18 +138,40 @@ final class InstallCommand extends Command
         return $auto === $answer ? self::AUTO : $answer;
     }
 
-    private function writeProvider(string $provider, SymfonyStyle $io): void
+    /**
+     * @return bool|null whether to verify the sandbox certificate, or null to leave the config as it is
+     */
+    private function chooseVerifyPeer(InputInterface $input, SymfonyStyle $io): ?bool
     {
-        $line = self::AUTO === $provider
-            ? '# context_provider: ~'
-            : \sprintf("context_provider: '%s'", str_replace("'", "''", $provider));
+        $option = $input->getOption('sandbox-verify-peer');
+        if (null !== $option) {
+            return filter_var($option, \FILTER_VALIDATE_BOOL, \FILTER_NULL_ON_FAILURE)
+                ?? throw new InvalidOptionException(\sprintf('The "--sandbox-verify-peer" option must be 1 or 0, "%s" given.', $option));
+        }
 
+        if (!$input->isInteractive()) {
+            return null;
+        }
+
+        $current = preg_match('/^[ \t]*sandbox_verify_peer:[ \t]*(\S+)/m', (string) file_get_contents($this->projectDir.'/'.self::PACKAGE_CONFIG), $matches)
+            ? filter_var($matches[1], \FILTER_VALIDATE_BOOL)
+            : false;
+
+        return $io->confirm('Verify the sandbox TLS certificate? Answer no for a self-signed certificate', $current);
+    }
+
+    /**
+     * Replaces the first line setting $key, commented out or not, in the package config with $line.
+     */
+    private function writeConfig(string $key, string $line, SymfonyStyle $io): void
+    {
         $path = $this->projectDir.'/'.self::PACKAGE_CONFIG;
         $contents = (string) file_get_contents($path);
-        $updated = preg_replace(self::CONTEXT_PROVIDER_LINE, '${1}'.$line, $contents, 1, $count);
+        $pattern = '/^([ \t]*)#?[ \t]*'.preg_quote($key, '/').':.*$/m';
+        $updated = preg_replace_callback($pattern, static fn (array $m) => $m[1].$line, $contents, 1, $count);
 
         if (!$count) {
-            $io->warning(\sprintf('%s has no context_provider line. Add it under test_hub:%s    %s', self::PACKAGE_CONFIG, \PHP_EOL, $line));
+            $io->warning(\sprintf('%s has no %s line. Add it under test_hub:%s    %s', self::PACKAGE_CONFIG, $key, \PHP_EOL, $line));
 
             return;
         }
@@ -161,6 +194,13 @@ final class InstallCommand extends Command
         $answer = $io->ask($question, \is_string($current) && '' !== $current ? $current : null);
 
         return null === $answer || $answer === $current ? null : (string) $answer;
+    }
+
+    private function hasEnv(string $name): bool
+    {
+        $path = $this->projectDir.'/'.self::ENV_FILE;
+
+        return is_file($path) && preg_match('/^'.preg_quote($name, '/').'=/m', (string) file_get_contents($path));
     }
 
     /**

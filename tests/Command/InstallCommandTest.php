@@ -6,6 +6,7 @@ namespace TestHub\Bundle\Tests\Command;
 
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\InvalidOptionException;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Filesystem\Filesystem;
 use TestHub\Bundle\Command\InstallCommand;
@@ -34,7 +35,25 @@ class InstallCommandTest extends TestCase
         $tester->assertCommandIsSuccessful();
         $this->assertFileEquals(\dirname(__DIR__, 2).'/recipe/config/packages/test_hub.yaml', $this->projectDir.'/config/packages/test_hub.yaml');
         $this->assertFileEquals(\dirname(__DIR__, 2).'/recipe/config/routes/test_hub.yaml', $this->projectDir.'/config/routes/test_hub.yaml');
-        $this->assertFileDoesNotExist($this->projectDir.'/.env.local');
+        $this->assertSame("USE_SANDBOX=1\n", file_get_contents($this->projectDir.'/.env.local'));
+    }
+
+    public function testKeepsExistingUseSandbox(): void
+    {
+        $this->write('.env.local', "USE_SANDBOX=false\n");
+
+        $this->tester()->execute([], ['interactive' => false]);
+
+        $this->assertSame("USE_SANDBOX=false\n", file_get_contents($this->projectDir.'/.env.local'));
+    }
+
+    public function testWritesUseSandboxFromOption(): void
+    {
+        $this->write('.env.local', "USE_SANDBOX=1\n");
+
+        $this->tester()->execute(['--use-sandbox' => '0'], ['interactive' => false]);
+
+        $this->assertSame("USE_SANDBOX=0\n", file_get_contents($this->projectDir.'/.env.local'));
     }
 
     public function testKeepsExistingConfigFiles(): void
@@ -53,6 +72,29 @@ class InstallCommandTest extends TestCase
         $config = (string) file_get_contents($this->projectDir.'/config/packages/test_hub.yaml');
         $this->assertStringContainsString("        context_provider: 'App\\Sandbox\\Provider'\n", $config);
         $this->assertStringNotContainsString('# context_provider', $config);
+    }
+
+    public function testRecipeDisablesVerifyPeer(): void
+    {
+        $this->tester()->execute([], ['interactive' => false]);
+
+        $this->assertStringContainsString("        sandbox_verify_peer: false\n", (string) file_get_contents($this->projectDir.'/config/packages/test_hub.yaml'));
+    }
+
+    public function testWritesVerifyPeerFromOption(): void
+    {
+        $this->write('config/packages/test_hub.yaml', "test_hub:\n    # sandbox_verify_peer: false\n");
+
+        $this->tester()->execute(['--sandbox-verify-peer' => '1'], ['interactive' => false]);
+
+        $this->assertSame("test_hub:\n    sandbox_verify_peer: true\n", file_get_contents($this->projectDir.'/config/packages/test_hub.yaml'));
+    }
+
+    public function testRejectsInvalidVerifyPeer(): void
+    {
+        $this->expectException(InvalidOptionException::class);
+
+        $this->tester()->execute(['--sandbox-verify-peer' => 'maybe'], ['interactive' => false]);
     }
 
     public function testAutoCommentsProviderOut(): void
@@ -80,13 +122,15 @@ class InstallCommandTest extends TestCase
         $this->write('.env.local', "APP_SECRET=abc\nSANDBOX_URL=https://old.example\n");
 
         $tester = $this->tester(['app.first', 'app.second']);
-        $tester->setInputs(['app.second', 'https://sandbox.example', 'key with space']);
+        $tester->setInputs(['app.second', 'https://sandbox.example', 'key with space', 'yes']);
         $tester->execute([]);
 
         $tester->assertCommandIsSuccessful();
-        $this->assertStringContainsString("context_provider: 'app.second'", (string) file_get_contents($this->projectDir.'/config/packages/test_hub.yaml'));
+        $config = (string) file_get_contents($this->projectDir.'/config/packages/test_hub.yaml');
+        $this->assertStringContainsString("context_provider: 'app.second'", $config);
+        $this->assertStringContainsString("        sandbox_verify_peer: true\n", $config);
         $this->assertSame(
-            "APP_SECRET=abc\nSANDBOX_URL=https://sandbox.example\nSANDBOX_API_KEY='key with space'\n",
+            "APP_SECRET=abc\nSANDBOX_URL=https://sandbox.example\nSANDBOX_API_KEY='key with space'\nUSE_SANDBOX=1\n",
             file_get_contents($this->projectDir.'/.env.local'),
         );
     }
@@ -94,10 +138,11 @@ class InstallCommandTest extends TestCase
     public function testInteractiveWithoutCandidatesLeavesProvider(): void
     {
         $tester = $this->tester();
-        $tester->setInputs(['', '']);
+        $tester->setInputs(['', '', '']);
         $tester->execute([]);
 
         $this->assertSame(Command::SUCCESS, $tester->getStatusCode());
+        $this->assertStringContainsString('sandbox_verify_peer: false', (string) file_get_contents($this->projectDir.'/config/packages/test_hub.yaml'));
         $this->assertStringContainsString('# context_provider: ~', (string) file_get_contents($this->projectDir.'/config/packages/test_hub.yaml'));
         $this->assertStringContainsString('No application service', $tester->getDisplay());
     }
