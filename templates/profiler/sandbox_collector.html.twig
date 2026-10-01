@@ -125,8 +125,9 @@
                 <td>
                     <select id="sandbox-deposit-event" name="deposit_event" class="sandbox-event-control">
                         <option value="">-</option>
-                        <option value="success"{{ collector.depositEvent == 'success' ? ' selected' : '' }}>success</option>
-                        <option value="fail"{{ collector.depositEvent == 'fail' ? ' selected' : '' }}>fail</option>
+                        {% for event in collector.eventVariants %}
+                            <option value="{{ event }}"{{ collector.depositEvent == event ? ' selected' : '' }}>{{ event }}</option>
+                        {% endfor %}
                     </select>
                 </td>
             </tr>
@@ -135,8 +136,9 @@
                 <td>
                     <select id="sandbox-withdrawal-event" name="withdrawal_event" class="sandbox-event-control">
                         <option value="">-</option>
-                        <option value="success"{{ collector.withdrawalEvent == 'success' ? ' selected' : '' }}>success</option>
-                        <option value="fail"{{ collector.withdrawalEvent == 'fail' ? ' selected' : '' }}>fail</option>
+                        {% for event in collector.eventVariants %}
+                            <option value="{{ event }}"{{ collector.withdrawalEvent == event ? ' selected' : '' }}>{{ event }}</option>
+                        {% endfor %}
                     </select>
                 </td>
             </tr>

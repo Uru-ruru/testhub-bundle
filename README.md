@@ -74,7 +74,7 @@ The bundle also checks the kernel environment: in any environment not listed in 
    The original URL is sent in the `sandbox-url` header, the event in the `sandbox-event` header and `SANDBOX_API_KEY` in the `sandbox-api-key` header. The API key is sent only to the sandbox, never to real APIs, and is left out when it is empty.
 4. The panel lists each outgoing request: original URL, sandbox URL, type/event, status, timing, request options, response headers and the sandbox response body.
 
-**Deposit event** and **Withdrawal event** select whether the sandbox answers `success` or `fail`.
+**Deposit event** and **Withdrawal event** select the event the sandbox answers with: `success`, `fail`, `error` or `pending`. Unset, it answers `success`.
 
 ### Request type
 

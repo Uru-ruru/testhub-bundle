@@ -209,7 +209,7 @@ final class SandBoxHttpClientDecorator implements HttpClientInterface
 
         $event = $this->requestStack->getMainRequest()?->cookies->get($cookie);
 
-        return \in_array($event, [SandBoxDataCollector::EVENT_SUCCESS, SandBoxDataCollector::EVENT_FAIL], true)
+        return \in_array($event, SandBoxDataCollector::EVENT_VARIANTS, true)
             ? $event
             : SandBoxDataCollector::EVENT_SUCCESS;
     }

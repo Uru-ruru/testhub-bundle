@@ -103,6 +103,26 @@ class SandBoxHttpClientDecoratorTest extends TestCase
         $this->assertSame('http://sandbox.test/api/nexumpay/withdraw/fail', $this->sent[0]['url']);
     }
 
+    public function testPendingAndErrorEventsAreSent(): void
+    {
+        $this->pushRequest(['deposit_event' => 'pending', 'withdrawal_event' => 'error']);
+
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit'));
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'withdraw'));
+
+        $this->assertSame('http://sandbox.test/api/nexumpay/deposit/pending', $this->sent[0]['url']);
+        $this->assertSame('http://sandbox.test/api/nexumpay/withdraw/error', $this->sent[1]['url']);
+    }
+
+    public function testUnknownEventFallsBackToSuccess(): void
+    {
+        $this->pushRequest(['deposit_event' => 'refunded']);
+
+        $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit'));
+
+        $this->assertSame('http://sandbox.test/api/nexumpay/deposit/success', $this->sent[0]['url']);
+    }
+
     public function testExplicitTypeOverridesContext(): void
     {
         $this->sendWithContext(new AppContext('https://psp.test', 'nexumpay', direction: 'deposit'), [
