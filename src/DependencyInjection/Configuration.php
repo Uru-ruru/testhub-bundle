@@ -34,6 +34,14 @@ class Configuration implements ConfigurationInterface
                 ->scalarNode('api_key')
                     ->defaultValue('%env(string:default::SANDBOX_API_KEY)%')
                 ->end()
+                ->scalarNode('sandbox_cafile')
+                    ->info('CA bundle used to verify the sandbox certificate. Applied only to requests sent to the sandbox.')
+                    ->defaultValue('%env(string:default::SANDBOX_CAFILE)%')
+                ->end()
+                ->booleanNode('sandbox_verify_peer')
+                    ->info('Set to false to skip certificate and host name checks for the sandbox, e.g. for a self-signed certificate. Requests to other hosts are still verified.')
+                    ->defaultTrue()
+                ->end()
             ->end();
 
         return $treeBuilder;
