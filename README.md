@@ -41,6 +41,25 @@ SANDBOX_API_KEY=your-key
 USE_SANDBOX=false
 ```
 
+### Docker
+
+If the sandbox runs on your machine and the application runs in Docker Compose, the container must resolve the sandbox host to the host machine. `test-hub:docker-host` adds it to `extra_hosts` of the service you choose:
+
+```bash
+php bin/console test-hub:docker-host            # asks which service
+php bin/console test-hub:docker-host php        # result:
+```
+
+```yaml
+services:
+    php:
+        # ...
+        extra_hosts:
+            - "sandbox.lan:host-gateway"
+```
+
+It reads `compose.yaml`, `docker-compose.yml` and their `.override` files in the project directory; pass another file with `--file=docker/compose.yaml`. `--host` (default `sandbox.lan`) and `--ip` (default `host-gateway`) change the entry. The file is edited as text, so comments and formatting stay. Existing `extra_hosts` lists and maps are appended to, and a service that already has the host is left as it is. Recreate the container afterwards: `docker compose up -d php`.
+
 The bundle also checks the kernel environment: in any environment not listed in `test_hub.environments` (default `['dev']`) it registers nothing, even if it is enabled in `bundles.php`.
 
 ## Usage

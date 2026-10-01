@@ -16,6 +16,7 @@ use TestHub\Bundle\Action\PayoutAction;
 use TestHub\Bundle\Action\PayoutRunnerInterface;
 use TestHub\Bundle\Action\PaySystemsPayoutRunner;
 use TestHub\Bundle\Collector\SandBoxDataCollector;
+use TestHub\Bundle\Command\DockerHostCommand;
 use TestHub\Bundle\Command\InstallCommand;
 use TestHub\Bundle\Controller\ActionController;
 use TestHub\Bundle\DependencyInjection\Compiler\ContextProviderPass;
@@ -116,6 +117,10 @@ class TestHubExtension extends Extension
         $container->register(InstallCommand::class)
             ->setArguments(['%kernel.project_dir%', $contextProviderId, $config['context_provider'], []])
             ->addTag('console.command', ['command' => InstallCommand::NAME, 'description' => InstallCommand::DESCRIPTION]);
+
+        $container->register(DockerHostCommand::class)
+            ->setArguments(['%kernel.project_dir%'])
+            ->addTag('console.command', ['command' => DockerHostCommand::NAME, 'description' => DockerHostCommand::DESCRIPTION]);
 
         $container->register(SandBoxHttpClientDecorator::class)
             ->setDecoratedService('http_client.transport', null, 100)
