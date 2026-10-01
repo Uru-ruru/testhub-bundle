@@ -24,6 +24,7 @@ return [
 - lists your services that implement `ContextProviderInterface` or have a public `get(): array` method, and writes your choice to `context_provider` in `config/packages/test_hub.yaml`. Choose **Detect automatically** to leave the line commented out (see [Agent context](#agent-context))
 - asks for the sandbox URL and API key and writes them to `.env.local`
 - writes `USE_SANDBOX=1` to `.env.local` unless `USE_SANDBOX` is set there already, so the sandbox is on until you switch it off in the profiler. `--use-sandbox=0` writes another value
+- asks whether to verify the sandbox TLS certificate and writes the answer to `sandbox_verify_peer` in `config/packages/test_hub.yaml`. The answer defaults to no, so a self-signed sandbox certificate works; `--sandbox-verify-peer=1` turns verification on without asking
 
 To run it without questions, for example in a setup script:
 
@@ -259,8 +260,8 @@ when@dev:
         use_sandbox: '%env(bool:default::USE_SANDBOX)%'
         api_key: '%env(string:default::SANDBOX_API_KEY)%'
         sandbox_cafile: '%env(string:default::SANDBOX_CAFILE)%'
-    sandbox_verify_peer: true
-    # context_provider: App\Sandbox\CurrentAgentProvider  # only needed to override detection
+        sandbox_verify_peer: false  # the recipe's value; without the line, the sandbox certificate is verified
+        # context_provider: App\Sandbox\CurrentAgentProvider  # only needed to override detection
 ```
 
 Until `sandbox_url` is set, the sandbox stays off, whatever the switch says.
