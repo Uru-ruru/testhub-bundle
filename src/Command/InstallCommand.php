@@ -15,6 +15,7 @@ use TestHub\Bundle\HttpClient\State\ContextProviderInterface;
 /**
  * Sets the bundle up in the application: copies the recipe's config files when they are missing,
  * writes the chosen context provider to config/packages/test_hub.yaml and the sandbox to .env.local.
+ * USE_SANDBOX=1 is written to .env.local unless it is set there already.
  */
 #[AsCommand(name: self::NAME, description: self::DESCRIPTION)]
 final class InstallCommand extends Command
@@ -48,7 +49,8 @@ final class InstallCommand extends Command
         $this
             ->addOption('context-provider', null, InputOption::VALUE_REQUIRED, \sprintf('Service ID or class of the context provider, or "%s" to detect it', self::AUTO))
             ->addOption('sandbox-url', null, InputOption::VALUE_REQUIRED, 'Sandbox URL, written to .env.local as SANDBOX_URL')
-            ->addOption('api-key', null, InputOption::VALUE_REQUIRED, 'Sandbox API key, written to .env.local as SANDBOX_API_KEY');
+            ->addOption('api-key', null, InputOption::VALUE_REQUIRED, 'Sandbox API key, written to .env.local as SANDBOX_API_KEY')
+            ->addOption('use-sandbox', null, InputOption::VALUE_REQUIRED, 'Default sandbox state, written to .env.local as USE_SANDBOX. Default: 1 unless it is set there already');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -67,6 +69,7 @@ final class InstallCommand extends Command
         $this->writeEnv([
             'SANDBOX_URL' => $this->askValue($input, $io, 'sandbox-url', 'Sandbox URL', 'SANDBOX_URL'),
             'SANDBOX_API_KEY' => $this->askValue($input, $io, 'api-key', 'Sandbox API key', 'SANDBOX_API_KEY'),
+            'USE_SANDBOX' => $input->getOption('use-sandbox') ?? ($this->hasEnv('USE_SANDBOX') ? null : '1'),
         ], $io);
 
         $io->success('Test Hub is installed. Open any page and click "Test Hub" in the debug toolbar.');
@@ -161,6 +164,13 @@ final class InstallCommand extends Command
         $answer = $io->ask($question, \is_string($current) && '' !== $current ? $current : null);
 
         return null === $answer || $answer === $current ? null : (string) $answer;
+    }
+
+    private function hasEnv(string $name): bool
+    {
+        $path = $this->projectDir.'/'.self::ENV_FILE;
+
+        return is_file($path) && preg_match('/^'.preg_quote($name, '/').'=/m', (string) file_get_contents($path));
     }
 
     /**

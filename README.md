@@ -23,6 +23,7 @@ return [
 - creates the two config files if they are missing, and leaves existing ones as they are
 - lists your services that implement `ContextProviderInterface` or have a public `get(): array` method, and writes your choice to `context_provider` in `config/packages/test_hub.yaml`. Choose **Detect automatically** to leave the line commented out (see [Agent context](#agent-context))
 - asks for the sandbox URL and API key and writes them to `.env.local`
+- writes `USE_SANDBOX=1` to `.env.local` unless `USE_SANDBOX` is set there already, so the sandbox is on until you switch it off in the profiler. `--use-sandbox=0` writes another value
 
 To run it without questions, for example in a setup script:
 

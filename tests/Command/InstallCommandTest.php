@@ -34,7 +34,25 @@ class InstallCommandTest extends TestCase
         $tester->assertCommandIsSuccessful();
         $this->assertFileEquals(\dirname(__DIR__, 2).'/recipe/config/packages/test_hub.yaml', $this->projectDir.'/config/packages/test_hub.yaml');
         $this->assertFileEquals(\dirname(__DIR__, 2).'/recipe/config/routes/test_hub.yaml', $this->projectDir.'/config/routes/test_hub.yaml');
-        $this->assertFileDoesNotExist($this->projectDir.'/.env.local');
+        $this->assertSame("USE_SANDBOX=1\n", file_get_contents($this->projectDir.'/.env.local'));
+    }
+
+    public function testKeepsExistingUseSandbox(): void
+    {
+        $this->write('.env.local', "USE_SANDBOX=false\n");
+
+        $this->tester()->execute([], ['interactive' => false]);
+
+        $this->assertSame("USE_SANDBOX=false\n", file_get_contents($this->projectDir.'/.env.local'));
+    }
+
+    public function testWritesUseSandboxFromOption(): void
+    {
+        $this->write('.env.local', "USE_SANDBOX=1\n");
+
+        $this->tester()->execute(['--use-sandbox' => '0'], ['interactive' => false]);
+
+        $this->assertSame("USE_SANDBOX=0\n", file_get_contents($this->projectDir.'/.env.local'));
     }
 
     public function testKeepsExistingConfigFiles(): void
@@ -86,7 +104,7 @@ class InstallCommandTest extends TestCase
         $tester->assertCommandIsSuccessful();
         $this->assertStringContainsString("context_provider: 'app.second'", (string) file_get_contents($this->projectDir.'/config/packages/test_hub.yaml'));
         $this->assertSame(
-            "APP_SECRET=abc\nSANDBOX_URL=https://sandbox.example\nSANDBOX_API_KEY='key with space'\n",
+            "APP_SECRET=abc\nSANDBOX_URL=https://sandbox.example\nSANDBOX_API_KEY='key with space'\nUSE_SANDBOX=1\n",
             file_get_contents($this->projectDir.'/.env.local'),
         );
     }
